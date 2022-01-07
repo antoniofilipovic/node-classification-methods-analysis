@@ -10,7 +10,9 @@ from gcn.constants import GCNLayerType, GCN_CHECKPOINTS_PATH, GCN_BINARIES_PATH
 from gcn.definitions.gcn import GCN
 from utils import util
 from utils.data_loading import load_graph_data
-from constants import DatasetType, CORA_NUM_INPUT_FEATURES, CORA_NUM_CLASSES, LoopPhase
+from constants import DatasetType, CORA_NUM_INPUT_FEATURES, CORA_NUM_CLASSES, LoopPhase, ModelType, CORA_TRAIN_RANGE, \
+    CORA_VAL_RANGE, CORA_TEST_RANGE
+from utils.visualization import visualize_gcn_embeddings
 
 
 def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, node_labels, adj_matrix, train_indices,
@@ -89,7 +91,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
             if config['checkpoint_freq'] is not None and (epoch + 1) % config['checkpoint_freq'] == 0:
                 ckpt_model_name = f'gat_{config["dataset_name"]}_ckpt_epoch_{epoch + 1}.pth'
                 config['test_perf'] = -1
-                torch.save(util.get_training_state(config, gcn), os.path.join(GCN_CHECKPOINTS_PATH, ckpt_model_name))
+                torch.save(util.get_gcn_training_state(config, gcn), os.path.join(GCN_CHECKPOINTS_PATH, ckpt_model_name))
 
         elif phase == LoopPhase.VAL:
             # Log metrics
@@ -127,7 +129,13 @@ def train_gcn_cora(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # load data
-    node_features, node_labels, adj_matrix, train_indices, val_indices, test_indices = load_graph_data(config, device)
+    node_features, node_labels, adj_matrix = load_graph_data(config, device)
+
+    # Indices that help us extract nodes that belong to the train/val and test splits, currently hardcoded
+    # question: what about training shuffle?
+    train_indices = torch.arange(CORA_TRAIN_RANGE[0], CORA_TRAIN_RANGE[1], dtype=torch.long, device=device)
+    val_indices = torch.arange(CORA_VAL_RANGE[0], CORA_VAL_RANGE[1], dtype=torch.long, device=device)
+    test_indices = torch.arange(CORA_TEST_RANGE[0], CORA_TEST_RANGE[1], dtype=torch.long, device=device)
 
     # Step 2: prepare the model
     gcn = GCN(
@@ -184,9 +192,11 @@ def train_gcn_cora(config):
 
     # Save the latest GCN in the binaries directory
     torch.save(
-        util.get_training_state(config, gcn),
-        os.path.join(GCN_BINARIES_PATH, util.get_available_binary_name(binary_name=GCN_BINARIES_PATH, dataset_name=config['dataset_name']))
+        util.get_gcn_training_state(config, gcn),
+        os.path.join(GCN_BINARIES_PATH,
+                     util.get_available_binary_name(binary_name=GCN_BINARIES_PATH, dataset_name=config['dataset_name'], model_name=ModelType.GCN.name))
     )
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -214,13 +224,14 @@ def get_args():
     args = parser.parse_args()
 
     # Model architecture related
-    gat_config = {
+    gcn_config = {
         "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
         "num_features_per_layer": [CORA_NUM_INPUT_FEATURES, 64, CORA_NUM_CLASSES],
         "add_skip_connection": False,  # hurts perf on Cora
         "bias": True,  # result is not so sensitive to bias
         "dropout": 0.6,  # result is sensitive to dropout,
-        "layer_type": GCNLayerType.IMP1
+        "layer_type": GCNLayerType.IMP1,
+        "model_type": ModelType.GCN,
     }
 
     # Wrapping training configuration into a dictionary
@@ -229,7 +240,7 @@ def get_args():
         training_config[arg] = getattr(args, arg)
 
     # Add additional config information
-    training_config.update(gat_config)
+    training_config.update(gcn_config)
 
     return training_config
 
@@ -237,9 +248,9 @@ def get_args():
 def main():
     args = get_args()
 
-    node_features, node_labels, adj_matrix, train_indices, val_indices, test_indices = load_graph_data(args, device = torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-
     train_gcn_cora(args)
+
+    visualize_gcn_embeddings()
 
 
 if __name__ == "__main__":

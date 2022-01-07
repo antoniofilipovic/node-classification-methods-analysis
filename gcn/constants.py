@@ -9,6 +9,5 @@ class GCNLayerType(enum.Enum):
 
 GCN_BINARIES_PATH = os.path.join(os.path.dirname(__file__), 'binaries')
 GCN_CHECKPOINTS_PATH = os.path.join(os.path.dirname(__file__), 'checkpoints')
-GCN_DATA_DIR_PATH = os.path.join(os.path.dirname(__file__), os.pardir, 'data')
 
 

@@ -1,7 +1,10 @@
 import os
+import pickle
 import re
 
 import numpy as np
+
+from gcn.constants import GCNLayerType
 
 
 def convert_adj_to_edge_index(adjacency_matrix):
@@ -26,10 +29,10 @@ def convert_adj_to_edge_index(adjacency_matrix):
             if adjacency_matrix[src_node_id, trg_nod_id] == active_value:
                 edge_index.append([src_node_id, trg_nod_id])
 
-    return np.asarray(edge_index).transpose()  # change shape from (N,2) -> (2,N)
+    return np.asarray(edge_index) # shape(N,2)
 
 
-def get_training_state(training_config, model):
+def get_gcn_training_state(training_config, model):
     training_state = {
         # Training details
         "dataset_name": training_config['dataset_name'],
@@ -50,9 +53,41 @@ def get_training_state(training_config, model):
 
     return training_state
 
+def get_node2vec_training_state(training_config, clf, embeddings):
+    training_state = {
+        # Training details
+        "dataset_name": training_config['dataset_name'],
+        "num_of_epochs": training_config['epochs'],
+        "test_perf": training_config['test_perf'],
 
-def get_available_binary_name(binary_name, dataset_name='unknown'):
-    prefix = f'gat_{dataset_name}'
+        # Model structure
+        "p": training_config['p'],
+        "q": training_config['q'],
+        "num_walks": training_config['num_walks'],
+        "walk_length": training_config['walk_length'],
+        "vector_size": training_config['vector_size'],
+        "alpha": training_config['alpha'],
+        "window": training_config['window'],
+        "min_count": training_config['min_count'],
+        "seed": training_config['seed'],
+        "workers": training_config['workers'],
+        "min_alpha": training_config['min_alpha'],
+        "sg": training_config['sg'],
+        "hs": training_config['hs'],
+        "negative": training_config['negative'],
+        "epochs": training_config['epochs'],
+
+        # Model state
+        "clf": clf,
+        "embeddings":embeddings
+    }
+
+    return training_state
+
+
+
+def get_available_binary_name(binary_name, dataset_name='unknown', model_name='gcn'):
+    prefix = f'{model_name}_{dataset_name}'
 
     def valid_binary_name(binary_name):
         # First time you see raw f-string? Don't worry the only trick is to double the brackets.
@@ -67,3 +102,25 @@ def get_available_binary_name(binary_name, dataset_name='unknown'):
         return f'{prefix}_{str(new_suffix).zfill(6)}.pth'
     else:
         return f'{prefix}_000000.pth'
+
+def print_model_metadata(training_state):
+    header = f'\n{"*"*5} Model training metadata: {"*"*5}'
+    print(header)
+
+    for key, value in training_state.items():
+        if key != 'state_dict':  # don't print state_dict it's a bunch of numbers...
+            print(f'{key}: {value}')
+    print(f'{"*" * len(header)}\n')
+
+def name_to_layer_type(name):
+    if name == GCNLayerType.IMP1.name:
+        return GCNLayerType.IMP1
+    elif name == GCNLayerType.IMP2.name:
+        return GCNLayerType.IMP2
+    else:
+        raise Exception(f'Name {name} not supported.')
+
+
+def pickle_save(path, data):
+    with open(path, 'wb') as file:
+        pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
