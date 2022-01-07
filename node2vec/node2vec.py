@@ -163,11 +163,4 @@ def get_embeddings(
         epochs=epochs,
     )
 
-    embeddings_result = []
-    nodes_result = []
-    for node_id, embedding in embeddings.items():
-        embeddings[node_id] = [float(e) for e in embedding]
-        nodes_result.append(ctx.graph.get_vertex_by_id(node_id))
-        embeddings_result.append(embeddings[node_id])
-
-    return nodes_result, embeddings_result
+    return embeddings
