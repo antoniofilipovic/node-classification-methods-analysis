@@ -11,8 +11,31 @@ from gcn.definitions.gcn import GCN
 from utils import util
 from utils.data_loading import load_graph_data
 from constants import DatasetType, CORA_NUM_INPUT_FEATURES, CORA_NUM_CLASSES, LoopPhase, ModelType, CORA_TRAIN_RANGE, \
-    CORA_VAL_RANGE, CORA_TEST_RANGE
+    CORA_VAL_RANGE, CORA_TEST_RANGE, CITESEER_NUM_INPUT_FEATURES, CITESEER_NUM_CLASSES, \
+    CITESEER_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS, CORA_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS
+from utils.util import get_balanced_train_indices
 from utils.visualization import visualize_gcn_embeddings
+
+
+def get_num_input_features(dataset_name):
+    if dataset_name.lower() == DatasetType.CORA.name.lower():
+        return CORA_NUM_INPUT_FEATURES
+    if dataset_name.lower() == DatasetType.CITESEER.name.lower():
+        return CITESEER_NUM_INPUT_FEATURES
+
+
+def get_num_classes(dataset_name):
+    if dataset_name.lower() == DatasetType.CORA.name.lower():
+        return CORA_NUM_CLASSES
+    if dataset_name.lower() == DatasetType.CITESEER.name.lower():
+        return CITESEER_NUM_CLASSES
+
+
+def get_num_training_examples_per_classes(dataset_name):
+    if dataset_name.lower() == DatasetType.CORA.name.lower():
+        return CORA_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS
+    if dataset_name.lower() == DatasetType.CITESEER.name.lower():
+        return CITESEER_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS
 
 
 def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, node_labels, adj_matrix, train_indices,
@@ -22,9 +45,9 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
     train_labels = node_labels.index_select(node_dim, train_indices)
     val_labels = node_labels.index_select(node_dim, val_indices)
     test_labels = node_labels.index_select(node_dim, test_indices)
-
+    print(train_labels)
     # node_features shape = (N, FIN), edge_index shape = (2, E)
-    graph_data = (node_features, adj_matrix)  # I pack data into tuples because GAT uses nn.Sequential which requires it
+    graph_data = (node_features, adj_matrix)  # pack data into tuples because GCN uses nn.Sequential which requires it
 
     def get_node_indices(phase):
         if phase == LoopPhase.TRAIN:
@@ -58,6 +81,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
         # Do a forwards pass and extract only the relevant node scores (train/val or test ones)
         # Note: [0] just extracts the node_features part of the data (index 1 contains the edge_index)
         # shape = (N, C) where N is the number of nodes in the split (train/val/test) and C is the number of classes
+
         nodes_unnormalized_scores = gcn(graph_data)[0].index_select(node_dim, node_indices)
 
         # In Cora dataset we will have 7 output probabilities. cross_entropy loss first applies softmax to vector,
@@ -89,9 +113,10 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
 
             # Save model checkpoint
             if config['checkpoint_freq'] is not None and (epoch + 1) % config['checkpoint_freq'] == 0:
-                ckpt_model_name = f'gat_{config["dataset_name"]}_ckpt_epoch_{epoch + 1}.pth'
+                ckpt_model_name = f'gcn_{config["dataset_name"]}_ckpt_epoch_{epoch + 1}.pth'
                 config['test_perf'] = -1
-                torch.save(util.get_gcn_training_state(config, gcn), os.path.join(GCN_CHECKPOINTS_PATH, ckpt_model_name))
+                torch.save(util.get_gcn_training_state(config, gcn),
+                           os.path.join(GCN_CHECKPOINTS_PATH, ckpt_model_name))
 
         elif phase == LoopPhase.VAL:
             # Log metrics
@@ -102,7 +127,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
             # Log to console
             if config['console_log_freq'] is not None and epoch % config['console_log_freq'] == 0:
                 print(
-                    f'GAT training: time elapsed= {(time.time() - time_start):.2f} [s] | epoch={epoch + 1} | val acc={accuracy}')
+                    f'GCN training: time elapsed= {(time.time() - time_start):.2f} [s] | epoch={epoch + 1} | val acc={accuracy}')
 
             # The "patience" logic - should we break out from the training loop? If either validation acc keeps going up
             # or the val loss keeps going down we won't stop
@@ -114,7 +139,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
                 PATIENCE_CNT += 1  # otherwise keep counting
 
             if PATIENCE_CNT >= patience_period:
-                raise Exception('Stopping the training, the universe has no more patience for this training.')
+                raise Exception('Stopping the training.')
 
         else:
             return accuracy  # in the case of test phase we just report back the test accuracy
@@ -131,11 +156,20 @@ def train_gcn_cora(config):
     # load data
     node_features, node_labels, adj_matrix = load_graph_data(config, device)
 
+    train_indices, val_indices, test_indices = \
+        get_balanced_train_indices(node_labels.cpu().detach().numpy(),
+                                   num_training_examples_per_class=get_num_training_examples_per_classes(
+                                       config["dataset_name"]))
+
     # Indices that help us extract nodes that belong to the train/val and test splits, currently hardcoded
     # question: what about training shuffle?
-    train_indices = torch.arange(CORA_TRAIN_RANGE[0], CORA_TRAIN_RANGE[1], dtype=torch.long, device=device)
-    val_indices = torch.arange(CORA_VAL_RANGE[0], CORA_VAL_RANGE[1], dtype=torch.long, device=device)
-    test_indices = torch.arange(CORA_TEST_RANGE[0], CORA_TEST_RANGE[1], dtype=torch.long, device=device)
+    train_indices = torch.from_numpy(train_indices)
+    val_indices = torch.from_numpy(val_indices)
+    test_indices = torch.from_numpy(test_indices)
+
+    # train_indices = torch.arange(CORA_TRAIN_RANGE[0], CORA_TRAIN_RANGE[1], dtype=torch.long, device=device)
+    # val_indices = torch.arange(CORA_VAL_RANGE[0], CORA_VAL_RANGE[1], dtype=torch.long, device=device)
+    # test_indices = torch.arange(CORA_TEST_RANGE[0], CORA_TEST_RANGE[1], dtype=torch.long, device=device)
 
     # Step 2: prepare the model
     gcn = GCN(
@@ -194,7 +228,8 @@ def train_gcn_cora(config):
     torch.save(
         util.get_gcn_training_state(config, gcn),
         os.path.join(GCN_BINARIES_PATH,
-                     util.get_available_binary_name(binary_name=GCN_BINARIES_PATH, dataset_name=config['dataset_name'], model_name=ModelType.GCN.name))
+                     util.get_available_binary_name(binary_name=GCN_BINARIES_PATH, dataset_name=config['dataset_name'],
+                                                    model_name=ModelType.GCN.name))
     )
 
 
@@ -226,7 +261,6 @@ def get_args():
     # Model architecture related
     gcn_config = {
         "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
-        "num_features_per_layer": [CORA_NUM_INPUT_FEATURES, 64, CORA_NUM_CLASSES],
         "add_skip_connection": False,  # hurts perf on Cora
         "bias": True,  # result is not so sensitive to bias
         "dropout": 0.6,  # result is sensitive to dropout,
@@ -240,7 +274,11 @@ def get_args():
         training_config[arg] = getattr(args, arg)
 
     # Add additional config information
-    training_config.update(gcn_config)
+    training_config = {**gcn_config, **training_config}
+    print(training_config)
+
+    training_config["num_features_per_layer"] = [get_num_input_features(training_config["dataset_name"]), 64,
+                                                 get_num_classes(training_config["dataset_name"])]
 
     return training_config
 
@@ -250,7 +288,7 @@ def main():
 
     train_gcn_cora(args)
 
-    visualize_gcn_embeddings()
+    visualize_gcn_embeddings(model_name=f"GCN_{args['dataset_name']}_000003.pth", dataset_name=args['dataset_name'])
 
 
 if __name__ == "__main__":

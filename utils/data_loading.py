@@ -4,8 +4,8 @@ import numpy as np
 import scipy.sparse as sp
 from typing import List, Tuple
 
-from constants import ModelType
-from data_parser import cora
+from constants import ModelType, DatasetType
+from data_parser import cora, citeseer
 
 
 def create_adj_matrix(directed_edges: List[Tuple[int, int]], nodes: List[int]):
@@ -39,43 +39,62 @@ def normalize_features_sparse(node_features_sparse):
     return diagonal_inv_features_sum_matrix.dot(node_features_sparse)
 
 
+def process_citation_network(adj_matrix, node_labels, node_features, model_type, device):
+    # adjacency matrix shape = (N,N)
+    adj_matrix = np.array(adj_matrix, dtype=float)
+    adj_matrix[adj_matrix > 0] = 1  # multiple edges not allowed
+
+    if model_type == ModelType.NONE:
+        return node_features, node_labels, adj_matrix
+
+    # not good design pattern
+    if model_type == ModelType.NODE2VEC:
+        return node_features, node_labels, adj_matrix
+
+    if model_type == ModelType.GCN:
+        adj_matrix += np.identity(adj_matrix.shape[0])  # add self connections
+        adj_matrix+=np.transpose(adj_matrix)
+        adj_matrix[adj_matrix > 0] = 1  # multiple edges not allowed
+        rowsum = np.array(adj_matrix.sum(1))
+        r_inv = np.power(rowsum, -0.5).flatten()
+        r_inv[np.isinf(r_inv)] = 1.
+        r_mat_inv = np.zeros((adj_matrix.shape[0], adj_matrix.shape[1]),
+                             float)  # if you put int here, it will be greatest mistake ever
+
+        np.fill_diagonal(r_mat_inv, r_inv)
+
+        adj_matrix = np.matmul(adj_matrix, r_mat_inv)
+        adj_matrix = np.matmul(adj_matrix, r_mat_inv)
+
+    # normalizing node features
+    nodes_features = sp.csr_matrix(node_features)
+    nodes_features = normalize_features_sparse(nodes_features)
+
+    adj_matrix = torch.tensor(adj_matrix, dtype=torch.float, device=device)
+    node_labels = torch.tensor(node_labels, dtype=torch.long, device=device)  # Cross entropy expects a long int
+    node_features = torch.tensor(nodes_features.todense(), dtype=torch.float, device=device)
+
+    return  node_features, node_labels, adj_matrix
+
+
 def load_graph_data(training_config, device=None):
     dataset_name = training_config['dataset_name'].lower()
     model_type = training_config['model_type']
 
-    if dataset_name == "cora":
-        # directed edges shape = (2,E), where E is number of edges
-        # nodes_correct_label shape = (N,2), where N is number of nodes, and 2 for node and it's label
+    if dataset_name == DatasetType.CORA.name.lower():  # Cora citation network
+        # adj_matrix = (N,N), where N is number of nodes
+        # node_labels shape = (N,), where N is number of nodes
         # node features shape = (N, FIN), where FIN je number of input features
-        adj_matrix, node_labels, node_features = cora.get_data_train_balanced()
+        adj_matrix, node_labels, node_features = cora.get_data_train_unbalanced()
 
-        # adjacency matrix shape = (N,N)
-        adj_matrix = np.array(adj_matrix, dtype=float)
-        adj_matrix[adj_matrix > 0] = 1  # multiple edges not allowed
+        return process_citation_network(adj_matrix=adj_matrix, node_labels=node_labels, node_features=node_features,
+                                        model_type=model_type, device=device)
 
-        # not good design pattern
-        if model_type == ModelType.NODE2VEC:
-            return node_features, node_labels, adj_matrix
+    if dataset_name == DatasetType.CITESEER.name.lower():  # Citeseer citation network
+        # adj_matrix = (N,N), where N is number of nodes
+        # node_labels shape = (N,), where N is number of nodes
+        # node features shape = (N, FIN), where FIN je number of input features
+        adj_matrix, node_labels, node_features = citeseer.get_data_train_balanced()
 
-        if model_type == ModelType.GCN:
-            adj_matrix += np.identity(adj_matrix.shape[0])  # add self connections
-
-            rowsum = np.array(adj_matrix.sum(1))
-            r_inv = np.power(rowsum, -0.5).flatten()
-            r_inv[np.isinf(r_inv)] = 1.
-            r_mat_inv = np.zeros((2708, 2708), float)  # if you put int here, it will be greatest mistake ever
-
-            np.fill_diagonal(r_mat_inv, r_inv)
-
-            adj_matrix = np.matmul(adj_matrix, r_mat_inv)
-            adj_matrix = np.matmul(adj_matrix, r_mat_inv)
-
-        # normalizing node features
-        nodes_features = sp.csr_matrix(node_features)
-        nodes_features = normalize_features_sparse(nodes_features)
-
-        adj_matrix = torch.tensor(adj_matrix, dtype=torch.float, device=device)
-        node_labels = torch.tensor(node_labels, dtype=torch.long, device=device)  # Cross entropy expects a long int
-        node_features = torch.tensor(nodes_features.todense(), dtype=torch.float, device=device)
-
-        return node_features, node_labels, adj_matrix
+        return process_citation_network(adj_matrix=adj_matrix, node_labels=node_labels, node_features=node_features,
+                                        model_type=model_type, device=device)

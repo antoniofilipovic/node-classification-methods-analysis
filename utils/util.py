@@ -2,9 +2,27 @@ import os
 import pickle
 import re
 
+import numpy
 import numpy as np
+import torch
+from sklearn.model_selection import train_test_split
 
 from gcn.constants import GCNLayerType
+
+
+def convert_adj_dict_to_adj_matrix(adj_dict):
+    """
+    Convert adj dict to adj matrix
+    """
+    assert isinstance(adj_dict, dict), f'Expected Dict type got {type(adj_dict)}.'
+
+    N = len(adj_dict)
+    adjacency_matrix = np.zeros((N, N), dtype=int)
+    for src, src_neighbors in adj_dict.items():
+        for target in src_neighbors:
+            adjacency_matrix[src][target] = 1
+
+    return adjacency_matrix  # shape (N,N)
 
 
 def convert_adj_to_edge_index(adjacency_matrix):
@@ -29,7 +47,7 @@ def convert_adj_to_edge_index(adjacency_matrix):
             if adjacency_matrix[src_node_id, trg_nod_id] == active_value:
                 edge_index.append([src_node_id, trg_nod_id])
 
-    return np.asarray(edge_index) # shape(N,2)
+    return np.asarray(edge_index)  # shape(N,2)
 
 
 def get_gcn_training_state(training_config, model):
@@ -52,6 +70,7 @@ def get_gcn_training_state(training_config, model):
     }
 
     return training_state
+
 
 def get_node2vec_training_state(training_config, clf, embeddings):
     training_state = {
@@ -79,11 +98,10 @@ def get_node2vec_training_state(training_config, clf, embeddings):
 
         # Model state
         "clf": clf,
-        "embeddings":embeddings
+        "embeddings": embeddings
     }
 
     return training_state
-
 
 
 def get_available_binary_name(binary_name, dataset_name='unknown', model_name='gcn'):
@@ -103,14 +121,16 @@ def get_available_binary_name(binary_name, dataset_name='unknown', model_name='g
     else:
         return f'{prefix}_000000.pth'
 
+
 def print_model_metadata(training_state):
-    header = f'\n{"*"*5} Model training metadata: {"*"*5}'
+    header = f'\n{"*" * 5} Model training metadata: {"*" * 5}'
     print(header)
 
     for key, value in training_state.items():
         if key != 'state_dict':  # don't print state_dict it's a bunch of numbers...
             print(f'{key}: {value}')
     print(f'{"*" * len(header)}\n')
+
 
 def name_to_layer_type(name):
     if name == GCNLayerType.IMP1.name:
@@ -124,3 +144,20 @@ def name_to_layer_type(name):
 def pickle_save(path, data):
     with open(path, 'wb') as file:
         pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def get_balanced_train_indices(node_labels: numpy.ndarray, num_training_examples_per_class=20, val_test_ratio=0.2) -> (
+numpy.ndarray, numpy.ndarray, numpy.ndarray):
+    node_labels_npy = node_labels
+    labels = set(node_labels_npy)
+    indices_train = np.array([], dtype=int)
+    indices_test = np.array([], dtype=int)
+    for label in labels:
+        indices_i = np.where(node_labels_npy == label)[0]
+        indices_i_train, indices_i_test = train_test_split(
+            indices_i, train_size=min([num_training_examples_per_class/len(indices_i), 1.0]))
+        indices_train = np.append(indices_train, indices_i_train)
+        indices_test = np.append(indices_test, indices_i_test)
+
+    indices_val, indices_test = train_test_split(indices_test, train_size=val_test_ratio)
+    return indices_train, indices_val, indices_test

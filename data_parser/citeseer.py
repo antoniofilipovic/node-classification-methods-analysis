@@ -62,6 +62,8 @@ def load_data(path=os.path.join(CITESEER_DATA_DIR), dataset="citeseer"):
     edges=[]
     for edge in edges_unordered:
         src, target = nodes_ids_map.get(edge[0]), nodes_ids_map.get(edge[1])
+        if src is None or target is None:
+            continue
         if src is None:
             nodes_ids_map[edge[0]]=max_value
             max_value+=1
@@ -76,7 +78,6 @@ def load_data(path=os.path.join(CITESEER_DATA_DIR), dataset="citeseer"):
         edges.append([nodes_ids_map.get(edge[0]), nodes_ids_map.get(edge[1])])
 
     edges = np.array(edges, dtype=int)
-    edges.reshape(edges_unordered.shape)
 
 
     # here we change order
@@ -107,7 +108,7 @@ def convert_adj_dict_to_adj_matrix(adj_dict):
     """
     assert isinstance(adj_dict, dict), f'Expected Dict type got {type(adj_dict)}.'
 
-    N = 2708
+    N = len(adj_dict)
     adjacency_matrix = np.zeros((N, N), dtype=int)
     for src, src_neighbors in adj_dict.items():
         for target in src_neighbors:
@@ -119,16 +120,22 @@ def convert_adj_dict_to_adj_matrix(adj_dict):
 def get_data_train_unbalanced():
     # shape = (N, FIN), where N is the number of nodes and FIN is the number of input features
     node_features_npy = pickle_read(os.path.join(PREPROCESSED_DATA_DIR, FEATURES_PREPROCESSED))
+    print(node_features_npy.shape)
 
     # shape = (N, 1)
     node_labels_npy = pickle_read(os.path.join(PREPROCESSED_DATA_DIR, LABELS_PREPROCESSED))
+    print(set(node_labels_npy))
 
     # shape = (N, number of neighboring nodes) <- this is a dictionary not a matrix!
     adjacency_list_dict = pickle_read(os.path.join(PREPROCESSED_DATA_DIR, ADJ_PREPROCESSED))
 
     adjacency_matrix = convert_adj_dict_to_adj_matrix(adjacency_list_dict)
-
+    print(adjacency_matrix.shape)
     return adjacency_matrix, node_labels_npy, node_features_npy
+
+
+def get_data_train_balanced():
+    return get_data_train_unbalanced()
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import argparse
+import collections
 import os
 import time
 from typing import Tuple, Dict, List
@@ -7,14 +8,22 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-from constants import ModelType, DatasetType
+from constants import ModelType, DatasetType, CORA_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS, \
+    CITESEER_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS
 from node2vec.constants import NODE2VEC_BINARIES_PATH
 from node2vec.util.graph import GraphHolder
 from utils import util
 from utils.data_loading import load_graph_data
 from node2vec.definitions import node2vec
-from utils.util import convert_adj_to_edge_index, get_node2vec_training_state, pickle_save
+from utils.util import convert_adj_to_edge_index, get_node2vec_training_state, pickle_save, get_balanced_train_indices
 from utils.visualization import visualize_embeddings
+
+
+def get_num_training_examples_per_classes(dataset_name):
+    if dataset_name.lower() == DatasetType.CORA.name.lower():
+        return CORA_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS
+    if dataset_name.lower() == DatasetType.CITESEER.name.lower():
+        return CITESEER_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS
 
 
 def calculate_embeddings(config, adj_matrix):
@@ -46,18 +55,26 @@ def calculate_embeddings(config, adj_matrix):
     return embeddings
 
 
-def train_classifier(node_labels, embeddings) -> (float, LogisticRegression, List[List[float]]):
+def train_classifier(node_labels: Dict[int, int], embeddings: Dict[int, List[float]], dataset_name="cora") -> (
+        float, LogisticRegression, List[List[float]]):
     BEST_TEST_ACC = 0.
     BEST_CLF: LogisticRegression
     BEST_EMBEDDINGS: List[List[float]]
 
-    NUM_TRAIN_NODES = [140, 1000, 1500]
-    NUM_NODES = len(node_labels)
+    node_labels = collections.OrderedDict(sorted(node_labels.items()))
+    embeddings = collections.OrderedDict(sorted((embeddings.items())))
+
+    NUM_TRAIN_LABELS_PER_CLASS = [get_num_training_examples_per_classes(dataset_name=dataset_name), 100, 150]
 
     time_start = time.time()
-    for num_train_nodes in NUM_TRAIN_NODES:
-        train_node_ids = np.arange(0, num_train_nodes)
-        test_node_ids = np.arange(num_train_nodes, NUM_NODES)
+    for num_train_nodes in NUM_TRAIN_LABELS_PER_CLASS:
+        train_indices, val_indices, test_indices = get_balanced_train_indices(np.array(list(node_labels.values())),
+                                                                              num_training_examples_per_class=num_train_nodes)
+        train_node_ids = train_indices
+        test_node_ids = np.concatenate((val_indices, test_indices))
+
+        train_node_ids = np.arange(0, num_train_nodes*7)
+        test_node_ids = np.arange(num_train_nodes * 7, len(node_labels))
 
         train_embeddings = [embeddings[node_id] for node_id in train_node_ids]
         train_labels = [node_labels[node_id] for node_id in train_node_ids]
@@ -73,6 +90,8 @@ def train_classifier(node_labels, embeddings) -> (float, LogisticRegression, Lis
         clf.fit(train_embeddings, train_labels)
         predictions = clf.predict(test_embeddings)
 
+        train_acc = np.sum(np.array(clf.predict(train_embeddings)) == np.array(train_labels)) / len(train_embeddings)
+
         accuracy = np.sum(np.array(predictions) == np.array(test_labels)) / len(test_node_ids)
 
         if accuracy > BEST_TEST_ACC:
@@ -83,7 +102,7 @@ def train_classifier(node_labels, embeddings) -> (float, LogisticRegression, Lis
             best_embeddings.extend(test_embeddings)
             BEST_EMBEDDINGS = best_embeddings
         print(
-            f'NODE2VEC embeddings_fitting: time elapsed= {(time.time() - time_start):.2f} [s] | num_train_nodes={num_train_nodes} | val acc={accuracy}')
+            f'NODE2VEC embeddings_fitting: time elapsed= {(time.time() - time_start):.2f} [s] | num_train_nodes={num_train_nodes} | train acc={train_acc} | test acc={accuracy} ')
 
     return BEST_TEST_ACC, BEST_CLF, BEST_EMBEDDINGS
 
@@ -181,9 +200,8 @@ def main():
 
     all_nodes_unnormalized_scores = np.array(best_clf.predict_proba(best_embeddings))
 
-
-
     visualize_embeddings(all_nodes_unnormalized_scores, np.array(node_labels))
+    visualize_embeddings(np.array(best_embeddings), np.array(node_labels))
 
 
 if __name__ == "__main__":

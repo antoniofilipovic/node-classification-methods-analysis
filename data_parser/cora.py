@@ -10,9 +10,10 @@ import pickle
 
 from typing import List, Tuple
 
-import networkx as nx
 import numpy as np
 import scipy.sparse as sp
+
+from utils.util import pickle_save, convert_adj_dict_to_adj_matrix
 
 CORA_NUMBER_OF_LABELS_PER_CLASS = 20
 
@@ -92,21 +93,7 @@ def pickle_read(path):
     return data
 
 
-def convert_adj_dict_to_adj_matrix(adj_dict):
-    """
-    Convert adj dict to adj matrix
-    """
-    assert isinstance(adj_dict, dict), f'Expected Dict type got {type(adj_dict)}.'
-
-
-    N = 2708
-    adjacency_matrix = np.zeros(( N, N), dtype=int)
-    for src, src_neighbors in adj_dict.items():
-        for target in src_neighbors:
-            adjacency_matrix[src][target] = 1
-
-    return adjacency_matrix  # shape (N,N)
-
+# After preprocessing, you can just use this function to load data
 def get_data_train_unbalanced():
     # shape = (N, FIN), where N is the number of nodes and FIN is the number of input features
     node_features_npy = pickle_read(os.path.join(PREPROCESSED_DATA_DIR, FEATURES_PREPROCESSED))
@@ -119,11 +106,14 @@ def get_data_train_unbalanced():
 
     adjacency_matrix = convert_adj_dict_to_adj_matrix(adjacency_list_dict)
 
-
     return adjacency_matrix, node_labels_npy, node_features_npy
 
-# From here all functions to down below are used to make training dataset balanced
-# This means we want to have 20 labels of each class so that we can train model
+
+# IMPORTANT:
+# From here to all way down below functions are used to make training dataset balanced.
+# This means we want to have 20 labels of each class on top so that we can train model
+# with balanced dataset. Later it got me that same would happen if only I used indices for
+# training differently :(
 
 class CoraCategories(enum.Enum):
     Case_Based = 0
@@ -276,15 +266,12 @@ if __name__ == "__main__":
 
     # this is used to save adj matrix to file so we don't need to preprocess it every time
     adj_dict_path = os.path.join(PREPROCESSED_DATA_DIR, ADJ_PREPROCESSED)
-    with open(adj_dict_path, 'wb') as handle:
-        pickle.dump(adj_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    pickle_save(adj_dict_path, adj_dict)
 
     # same applies to features which we will save as numpy
     features_dict_path = os.path.join(PREPROCESSED_DATA_DIR, FEATURES_PREPROCESSED)
-    with open(features_dict_path, 'wb') as handle:
-        pickle.dump(features_numpy, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    pickle_save(features_dict_path, features_numpy)
 
     # same applies to features which we will save as numpy
     labels_numpy_path = os.path.join(PREPROCESSED_DATA_DIR, LABELS_PREPROCESSED)
-    with open(labels_numpy_path, 'wb') as handle:
-        pickle.dump(labels_numpy, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    pickle_save(labels_numpy_path, labels_numpy)

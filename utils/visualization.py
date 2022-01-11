@@ -30,6 +30,7 @@ def visualize_graph(edge_index, node_labels, dataset_name):
     assert isinstance(edge_index, np.ndarray), f'Expected NumPy array got {type(edge_index)}.'
     if edge_index.shape[0] == edge_index.shape[1]:
         edge_index = convert_adj_to_edge_index(edge_index)
+        edge_index=edge_index.transpose() #2,N shape
 
     num_of_nodes = len(node_labels)
     edge_index_tuples = list(zip(edge_index[0, :], edge_index[1, :]))
@@ -100,7 +101,7 @@ def visualize_embeddings(all_nodes_unnormalized_scores, node_labels):
                     s=20, color=cora_label_to_color_map[class_id], edgecolors='black', linewidths=0.2)
     plt.show()
 
-def visualize_gcn_embeddings(model_name=r'gcn_CORA_000000.pth', dataset_name=DatasetType.CORA.name,
+def visualize_gcn_embeddings(model_name=r'GCN_CORA_000000.pth', dataset_name=DatasetType.CORA.name,
                              visualization_type=VisualizationType.EMBEDDINGS):
     """
     Notes on t-SNE:
@@ -121,7 +122,7 @@ def visualize_gcn_embeddings(model_name=r'gcn_CORA_000000.pth', dataset_name=Dat
     }
 
     # Step 1: Prepare the data
-    if dataset_name == DatasetType.CORA.name:
+    if dataset_name == DatasetType.CORA.name or dataset_name == DatasetType.CITESEER.name:
         node_features, node_labels, topology = load_graph_data(config, device)
 
     # Step 2: Prepare the model
