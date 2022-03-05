@@ -15,7 +15,7 @@ from utils.util import convert_adj_to_edge_index, print_model_metadata, name_to_
 
 def visualize_graph(edge_index, node_labels, dataset_name):
     """
-    Check out this blog for available graph visualization tools:
+    blog for available graph visualization tools:
         https://towardsdatascience.com/large-graph-visualization-tools-and-approaches-2b8758a1cd59
 
     Basically depending on how big your graph is there may be better drawing tools than igraph.
@@ -30,7 +30,7 @@ def visualize_graph(edge_index, node_labels, dataset_name):
     assert isinstance(edge_index, np.ndarray), f'Expected NumPy array got {type(edge_index)}.'
     if edge_index.shape[0] == edge_index.shape[1]:
         edge_index = convert_adj_to_edge_index(edge_index)
-        edge_index=edge_index.transpose() #2,N shape
+        edge_index = edge_index.transpose()  # 2,N shape
 
     num_of_nodes = len(node_labels)
     edge_index_tuples = list(zip(edge_index[0, :], edge_index[1, :]))
@@ -78,10 +78,9 @@ def visualize_graph(edge_index, node_labels, dataset_name):
     ig.plot(ig_graph, **visual_style)
 
 
-def visualize_embeddings(all_nodes_unnormalized_scores, node_labels):
+def tsne_visualize_embeddings(all_nodes_unnormalized_scores, node_labels):
     assert isinstance(all_nodes_unnormalized_scores,
                       np.ndarray), f'Expected NumPy array got {type(all_nodes_unnormalized_scores)}. '
-
 
     num_classes = len(set(node_labels))
 
@@ -91,7 +90,7 @@ def visualize_embeddings(all_nodes_unnormalized_scores, node_labels):
     # high dim points and between the t-Student distribution fit over low dimension points (the ones we're plotting)
     # Intuitively, by doing this, we preserve the similarities (relationships) between the high and low dim points.
     # This (probably) won't make much sense if you're not already familiar with t-SNE, God knows I've tried. :P
-    t_sne_embeddings = TSNE(n_components=2, perplexity=30, method='barnes_hut').fit_transform(
+    t_sne_embeddings = TSNE(n_components=2, perplexity=10, method='barnes_hut').fit_transform(
         all_nodes_unnormalized_scores)
 
     for class_id in range(num_classes):
@@ -101,12 +100,12 @@ def visualize_embeddings(all_nodes_unnormalized_scores, node_labels):
                     s=20, color=cora_label_to_color_map[class_id], edgecolors='black', linewidths=0.2)
     plt.show()
 
-def visualize_gcn_embeddings(model_name=r'GCN_CORA_000000.pth', dataset_name=DatasetType.CORA.name,
-                             visualization_type=VisualizationType.EMBEDDINGS):
+
+def visualize_gcn(binary_name:str, dataset_name:str,
+                  visualization_type=VisualizationType.EMBEDDINGS):
     """
     Notes on t-SNE:
     Check out this one for more intuition on how to tune t-SNE: https://distill.pub/2016/misread-tsne/
-
 
     """
 
@@ -117,8 +116,6 @@ def visualize_gcn_embeddings(model_name=r'GCN_CORA_000000.pth', dataset_name=Dat
         'model_type': ModelType.GCN,
         'layer_type': GCNLayerType.IMP1,
         'should_visualize': False,  # don't visualize the dataset
-        'batch_size': 2,  # used only for PPI
-        'ppi_load_test_only': True  # used only for PPI (optimization, we're loading only test graphs)
     }
 
     # Step 1: Prepare the data
@@ -126,7 +123,7 @@ def visualize_gcn_embeddings(model_name=r'GCN_CORA_000000.pth', dataset_name=Dat
         node_features, node_labels, topology = load_graph_data(config, device)
 
     # Step 2: Prepare the model
-    model_path = os.path.join(GCN_BINARIES_PATH, model_name)
+    model_path = os.path.join(GCN_BINARIES_PATH, binary_name)
     model_state = torch.load(model_path, map_location=device)
 
     gcn = GCN(
@@ -153,10 +150,8 @@ def visualize_gcn_embeddings(model_name=r'GCN_CORA_000000.pth', dataset_name=Dat
         all_nodes_unnormalized_scores, _ = gcn((node_features, topology))  # shape = (N, num of classes)
         all_nodes_unnormalized_scores = all_nodes_unnormalized_scores.cpu().numpy()
 
-
-    #edge_index = convert_adj_to_edge_index(topology)
-
-    if visualization_type == VisualizationType.EMBEDDINGS:  # visualize embeddings (using t-SNE)
+    # edge_index = convert_adj_to_edge_index(topology)
+    if visualization_type == VisualizationType.EMBEDDINGS:
+        # visualize embeddings (using t-SNE)
         node_labels = node_labels.cpu().numpy()
-
-        visualize_embeddings(all_nodes_unnormalized_scores, node_labels)
+        tsne_visualize_embeddings(all_nodes_unnormalized_scores, node_labels)

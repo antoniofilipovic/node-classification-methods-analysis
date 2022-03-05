@@ -2,9 +2,7 @@ import os
 import pickle
 import re
 
-import numpy
 import numpy as np
-import torch
 from sklearn.model_selection import train_test_split
 
 from gcn.constants import GCNLayerType
@@ -104,7 +102,7 @@ def get_node2vec_training_state(training_config, clf, embeddings):
     return training_state
 
 
-def get_available_binary_name(binary_name, dataset_name='unknown', model_name='gcn'):
+def get_last_binary_name(binary_dir: str, dataset_name: str, model_name: str,):
     prefix = f'{model_name}_{dataset_name}'
 
     def valid_binary_name(binary_name):
@@ -113,9 +111,16 @@ def get_available_binary_name(binary_name, dataset_name='unknown', model_name='g
         return re.fullmatch(pattern, binary_name) is not None
 
     # Just list the existing binaries so that we don't overwrite them but write to a new one
-    valid_binary_names = list(filter(valid_binary_name, os.listdir(binary_name)))
+    valid_binary_names = list(filter(valid_binary_name, os.listdir(binary_dir)))
     if len(valid_binary_names) > 0:
-        last_binary_name = sorted(valid_binary_names)[-1]
+        return sorted(valid_binary_names)[-1]
+    return None
+
+
+def get_available_binary_name(binary_dir, dataset_name: str, model_name: str):
+    prefix = f'{model_name}_{dataset_name}'
+    last_binary_name = get_last_binary_name(binary_dir, dataset_name, model_name)
+    if last_binary_name is not None:
         new_suffix = int(last_binary_name.split('.')[0][-6:]) + 1  # increment by 1
         return f'{prefix}_{str(new_suffix).zfill(6)}.pth'
     else:
@@ -146,8 +151,8 @@ def pickle_save(path, data):
         pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def get_balanced_train_indices(node_labels: numpy.ndarray, num_training_examples_per_class=20, val_test_ratio=0.2) -> (
-numpy.ndarray, numpy.ndarray, numpy.ndarray):
+def get_balanced_train_indices(node_labels: np.ndarray, num_training_examples_per_class=20, val_test_ratio=0.2) -> (
+        np.ndarray, np.ndarray, np.ndarray):
     node_labels_npy = node_labels
     labels = set(node_labels_npy)
     indices_train = np.array([], dtype=int)
@@ -155,9 +160,14 @@ numpy.ndarray, numpy.ndarray, numpy.ndarray):
     for label in labels:
         indices_i = np.where(node_labels_npy == label)[0]
         indices_i_train, indices_i_test = train_test_split(
-            indices_i, train_size=min([num_training_examples_per_class/len(indices_i), 1.0]))
+            indices_i, train_size=min([num_training_examples_per_class / len(indices_i), 1.0]))
         indices_train = np.append(indices_train, indices_i_train)
         indices_test = np.append(indices_test, indices_i_test)
 
     indices_val, indices_test = train_test_split(indices_test, train_size=val_test_ratio)
     return indices_train, indices_val, indices_test
+
+
+def get_unbalanced_train_indices(train_start: int, train_end: int, val_start: int, val_end: int,
+                                 test_start: int, test_end: int) -> (np.ndarray, np.ndarray, np.ndarray):
+    return np.arange(train_start, train_end), np.arange(val_start, val_end), np.arange(test_start, test_end)

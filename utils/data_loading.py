@@ -59,7 +59,7 @@ def process_citation_network(adj_matrix, node_labels, node_features, model_type,
         r_inv = np.power(rowsum, -0.5).flatten()
         r_inv[np.isinf(r_inv)] = 1.
         r_mat_inv = np.zeros((adj_matrix.shape[0], adj_matrix.shape[1]),
-                             float)  # if you put int here, it will be greatest mistake ever
+                             float)  # if you put int here, it will be the greatest mistake ever, 0.64 -> 0 :(
 
         np.fill_diagonal(r_mat_inv, r_inv)
 
@@ -90,7 +90,7 @@ def load_graph_data(training_config, device=None):
         return process_citation_network(adj_matrix=adj_matrix, node_labels=node_labels, node_features=node_features,
                                         model_type=model_type, device=device)
 
-    if dataset_name == DatasetType.CITESEER.name.lower():  # Citeseer citation network
+    elif dataset_name == DatasetType.CITESEER.name.lower():  # Citeseer citation network
         # adj_matrix = (N,N), where N is number of nodes
         # node_labels shape = (N,), where N is number of nodes
         # node features shape = (N, FIN), where FIN je number of input features
@@ -98,3 +98,6 @@ def load_graph_data(training_config, device=None):
 
         return process_citation_network(adj_matrix=adj_matrix, node_labels=node_labels, node_features=node_features,
                                         model_type=model_type, device=device)
+
+    else:
+        raise Exception(f"Unknown dataset, expected {DatasetType.CORA} or {DatasetType.CITESEER}")

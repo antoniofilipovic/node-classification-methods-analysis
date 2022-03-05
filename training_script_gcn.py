@@ -8,13 +8,14 @@ from torch.optim import Adam
 
 from gcn.constants import GCNLayerType, GCN_CHECKPOINTS_PATH, GCN_BINARIES_PATH
 from gcn.definitions.gcn import GCN
-from utils import util
+
 from utils.data_loading import load_graph_data
 from constants import DatasetType, CORA_NUM_INPUT_FEATURES, CORA_NUM_CLASSES, LoopPhase, ModelType, CORA_TRAIN_RANGE, \
     CORA_VAL_RANGE, CORA_TEST_RANGE, CITESEER_NUM_INPUT_FEATURES, CITESEER_NUM_CLASSES, \
     CITESEER_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS, CORA_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS
-from utils.util import get_balanced_train_indices
-from utils.visualization import visualize_gcn_embeddings
+
+import utils.util as util
+import utils.visualization as visualization
 
 
 def get_num_input_features(dataset_name):
@@ -156,20 +157,22 @@ def train_gcn_cora(config):
     # load data
     node_features, node_labels, adj_matrix = load_graph_data(config, device)
 
-    train_indices, val_indices, test_indices = \
-        get_balanced_train_indices(node_labels.cpu().detach().numpy(),
-                                   num_training_examples_per_class=get_num_training_examples_per_classes(
-                                       config["dataset_name"]))
+    if config["balanced"]:
+        train_indices, val_indices, test_indices = \
+            util.get_balanced_train_indices(node_labels.cpu().detach().numpy(),
+                                            num_training_examples_per_class=get_num_training_examples_per_classes(
+                                                config["dataset_name"]))
+    else:
+        train_indices, val_indices, test_indices = util.get_unbalanced_train_indices(
+            CORA_TRAIN_RANGE[0], CORA_TRAIN_RANGE[1],
+            CORA_VAL_RANGE[0], CORA_VAL_RANGE[1],
+            CORA_TEST_RANGE[0], CORA_TEST_RANGE[1])
 
     # Indices that help us extract nodes that belong to the train/val and test splits, currently hardcoded
     # question: what about training shuffle?
-    train_indices = torch.from_numpy(train_indices)
-    val_indices = torch.from_numpy(val_indices)
-    test_indices = torch.from_numpy(test_indices)
-
-    # train_indices = torch.arange(CORA_TRAIN_RANGE[0], CORA_TRAIN_RANGE[1], dtype=torch.long, device=device)
-    # val_indices = torch.arange(CORA_VAL_RANGE[0], CORA_VAL_RANGE[1], dtype=torch.long, device=device)
-    # test_indices = torch.arange(CORA_TEST_RANGE[0], CORA_TEST_RANGE[1], dtype=torch.long, device=device)
+    train_indices = torch.as_tensor(train_indices, device=device)
+    val_indices = torch.as_tensor(val_indices, device=device)
+    test_indices = torch.as_tensor(test_indices, device=device)
 
     # Step 2: prepare the model
     gcn = GCN(
@@ -228,13 +231,15 @@ def train_gcn_cora(config):
     torch.save(
         util.get_gcn_training_state(config, gcn),
         os.path.join(GCN_BINARIES_PATH,
-                     util.get_available_binary_name(binary_name=GCN_BINARIES_PATH, dataset_name=config['dataset_name'],
+                     util.get_available_binary_name(binary_dir=GCN_BINARIES_PATH, dataset_name=config['dataset_name'],
                                                     model_name=ModelType.GCN.name))
     )
 
 
 def get_args():
     parser = argparse.ArgumentParser()
+
+    parser.add_argument("--no_train", action='store_true', default=False, required=False)
 
     # Training related
     parser.add_argument("--num_of_epochs", type=int, help="number of training epochs", default=1000)
@@ -244,11 +249,14 @@ def get_args():
     parser.add_argument("--weight_decay", type=float, help="L2 regularization on model weights", default=5e-4)
     parser.add_argument("--should_test", action='store_true', default=True,
                         help='should test the model on the test dataset? (no by default)')
+    parser.add_argument("--balanced", action='store_true', default=True,
+                        help="should train with balanced num of labels")
 
     # Dataset related
     parser.add_argument("--dataset_name", choices=[el.name for el in DatasetType], help='dataset to use for training',
                         default=DatasetType.CORA.name)
     parser.add_argument("--should_visualize", action='store_true', help='should visualize the dataset? (no by default)')
+    parser.add_argument("--model_name", type=str, required=False)
 
     # Logging/debugging/checkpoint related (helps a lot with experimentation)
     parser.add_argument("--enable_tensorboard", action='store_true', help="enable tensorboard logging (no by default)")
@@ -286,9 +294,21 @@ def get_args():
 def main():
     args = get_args()
 
-    train_gcn_cora(args)
+    if not args["no_train"]:
+        train_gcn_cora(args)
 
-    visualize_gcn_embeddings(model_name=f"GCN_{args['dataset_name']}_000003.pth", dataset_name=args['dataset_name'])
+    if not args["should_visualize"]:
+        return
+
+    if not args["model_name"]:
+        binary_name = util.get_last_binary_name(binary_dir=GCN_BINARIES_PATH, dataset_name=args['dataset_name'],
+                                                model_name=ModelType.GCN.name)
+        if binary_name is None:
+            return
+    else:
+        binary_name = f"GCN_{args['dataset_name']}_{args['model_name']}.pth"
+
+    visualization.visualize_gcn(binary_name=binary_name, dataset_name=args['dataset_name'])
 
 
 if __name__ == "__main__":
