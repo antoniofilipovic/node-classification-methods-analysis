@@ -49,6 +49,20 @@ def process_citation_network(adj_matrix, node_labels, node_features, model_type,
 
     # not good design pattern
     if model_type == ModelType.NODE2VEC:
+
+        return node_features, node_labels, adj_matrix
+
+    if model_type == ModelType.GraphSAGE:
+
+        # normalizing node features
+        nodes_features = sp.csr_matrix(node_features)
+        nodes_features = normalize_features_sparse(nodes_features)
+
+        adj_matrix = sp.csr_matrix(adj_matrix)
+        adj_matrix = adj_matrix.tolil()
+
+        node_labels = torch.tensor(node_labels, dtype=torch.long, device=device)  # Cross entropy expects a long int
+        node_features = torch.tensor(nodes_features.todense(), dtype=torch.float, device=device)
         return node_features, node_labels, adj_matrix
 
     if model_type == ModelType.GCN:

@@ -69,6 +69,36 @@ def get_gcn_training_state(training_config, model):
 
     return training_state
 
+def get_graph_sage_training_state(training_config, clf, embeddings):
+    training_state = {
+        # Training details
+        "dataset_name": training_config['dataset_name'],
+        "num_of_epochs": training_config['epochs'],
+        "test_perf": training_config['test_perf'],
+
+        # Model structure
+        "p": training_config['p'],
+        "q": training_config['q'],
+        "num_walks": training_config['num_walks'],
+        "walk_length": training_config['walk_length'],
+        "vector_size": training_config['vector_size'],
+        "alpha": training_config['alpha'],
+        "window": training_config['window'],
+        "min_count": training_config['min_count'],
+        "seed": training_config['seed'],
+        "workers": training_config['workers'],
+        "min_alpha": training_config['min_alpha'],
+        "sg": training_config['sg'],
+        "hs": training_config['hs'],
+        "negative": training_config['negative'],
+        "epochs": training_config['epochs'],
+
+        # Model state
+        "clf": clf,
+        "embeddings": embeddings
+    }
+
+    return training_state
 
 def get_node2vec_training_state(training_config, clf, embeddings):
     training_state = {

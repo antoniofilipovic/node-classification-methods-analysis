@@ -6,9 +6,8 @@ import torch.nn as nn
 import torch.cuda
 from torch.optim import Adam
 
-from gcn.constants import GCNLayerType, GCN_CHECKPOINTS_PATH, GCN_BINARIES_PATH
-from gcn.definitions.gcn import GCN
-
+from graph_sage.constants import GRAPH_SAGE_CHECKPOINTS_PATH, GRAPH_SAGE_BINARIES_PATH, GraphSAGELayerType
+from graph_sage.definitions.graph_sage import GraphSAGE
 from utils.data_loading import load_graph_data
 from constants import DatasetType, CORA_NUM_INPUT_FEATURES, CORA_NUM_CLASSES, LoopPhase, ModelType, CORA_TRAIN_RANGE, \
     CORA_VAL_RANGE, CORA_TEST_RANGE, CITESEER_NUM_INPUT_FEATURES, CITESEER_NUM_CLASSES, \
@@ -39,7 +38,8 @@ def get_num_training_examples_per_classes(dataset_name):
         return CITESEER_NUMBER_OF_TRAIN_EXAMPLES_PER_CLASS
 
 
-def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, node_labels, adj_matrix, train_indices,
+def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_features, node_labels, adj_matrix,
+                  train_indices,
                   val_indices, test_indices, patience_period, time_start):
     node_dim = 0  # node axis
 
@@ -47,8 +47,9 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
     val_labels = node_labels.index_select(node_dim, val_indices)
     test_labels = node_labels.index_select(node_dim, test_indices)
 
-    # node_features shape = (N, FIN), edge_index shape = (2, E)
-    graph_data = (node_features, adj_matrix)  # pack data into tuples because GCN uses nn.Sequential which requires it
+    # node_features shape = (N, FIN)
+    # adj_matrix csr_matrix
+    graph_data = (node_features, adj_matrix)  # pack data into tuples because Graph SAGE uses nn.Sequential which requires it
 
     def get_node_indices(phase):
         if phase == LoopPhase.TRAIN:
@@ -72,9 +73,9 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
         # Certain modules behave differently depending on whether we're training the model or not.
         # e.g. nn.Dropout - we only want to drop model weights during the training.
         if phase == LoopPhase.TRAIN:
-            gcn.train()
+            graph_sage.train()
         else:
-            gcn.eval()
+            graph_sage.eval()
 
         node_indices = get_node_indices(phase)
         gt_node_labels = get_node_labels(phase)  # gt stands for ground truth
@@ -83,7 +84,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
         # Note: [0] just extracts the node_features part of the data (index 1 contains the edge_index)
         # shape = (N, C) where N is the number of nodes in the split (train/val/test) and C is the number of classes
 
-        nodes_unnormalized_scores = gcn(graph_data)[0].index_select(node_dim, node_indices)
+        nodes_unnormalized_scores = graph_sage(graph_data).index_select(0, node_indices)
 
         # In Cora dataset we will have 7 output probabilities. cross_entropy loss first applies softmax to vector,
         # and then it calculates loss
@@ -94,7 +95,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
             optimizer.zero_grad()  # clean the trainable weights gradients in the computational graph (.grad fields)
             loss.backward()  # compute the gradients for every trainable weight in the computational graph
             optimizer.step()  # apply the gradients to weights
-
+     
         # Calculate the main metric - accuracy
 
         # Finds the index of maximum (unnormalized) score for every node and that's the class prediction for that node.
@@ -114,10 +115,10 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
 
             # Save model checkpoint
             if config['checkpoint_freq'] is not None and (epoch + 1) % config['checkpoint_freq'] == 0:
-                ckpt_model_name = f'gcn_{config["dataset_name"]}_ckpt_epoch_{epoch + 1}.pth'
+                ckpt_model_name = f'graph_sage_{config["dataset_name"]}_ckpt_epoch_{epoch + 1}.pth'
                 config['test_perf'] = -1
-                torch.save(util.get_gcn_training_state(config, gcn),
-                           os.path.join(GCN_CHECKPOINTS_PATH, ckpt_model_name))
+                torch.save(util.get_graph_sage_training_state(config, graph_sage),
+                           os.path.join(GRAPH_SAGE_CHECKPOINTS_PATH, ckpt_model_name))
 
         elif phase == LoopPhase.VAL:
             # Log metrics
@@ -128,7 +129,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
             # Log to console
             if config['console_log_freq'] is not None and epoch % config['console_log_freq'] == 0:
                 print(
-                    f'GCN training: time elapsed= {(time.time() - time_start):.2f} [s] | epoch={epoch + 1} | val acc={accuracy}')
+                    f'Graph SAGE training: time elapsed= {(time.time() - time_start):.2f} [s] | epoch={epoch + 1} | val acc={accuracy}')
 
             # The "patience" logic - should we break out from the training loop? If either validation acc keeps going up
             # or the val loss keeps going down we won't stop
@@ -148,7 +149,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
     return main_loop  # return the decorated function
 
 
-def train_gcn_cora(config):
+def train_graph_sage_cora(config):
     global BEST_VAL_PERF, BEST_VAL_LOSS
 
     # check whether you have GPU
@@ -168,29 +169,29 @@ def train_gcn_cora(config):
             CORA_VAL_RANGE[0], CORA_VAL_RANGE[1],
             CORA_TEST_RANGE[0], CORA_TEST_RANGE[1])
 
-    # Indices that help us extract nodes that belong to the train/val and test splits, currently hardcoded
-    # question: what about training shuffle?
+    # Indices that help us extract nodes that belong to the train/val and test splits
     train_indices = torch.as_tensor(train_indices, device=device)
     val_indices = torch.as_tensor(val_indices, device=device)
     test_indices = torch.as_tensor(test_indices, device=device)
 
     # Step 2: prepare the model
-    gcn = GCN(
+    graph_sage = GraphSAGE(
         num_of_layers=config['num_of_layers'],
         num_features_per_layer=config['num_features_per_layer'],
-        bias=config['bias'],
+        device = device,
         dropout=config['dropout'],
-        add_skip_connection=config['add_skip_connection'],
+        layer_type=config['layer_type'],
+        num_neighbors= config['num_neighbors']
     ).to(device)
 
     # Step 3: Prepare other training related utilities (loss & optimizer and decorator function)
     loss_fn = nn.CrossEntropyLoss(reduction='mean')
-    optimizer = Adam(gcn.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
+    optimizer = Adam(graph_sage.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
 
     # The decorator function makes things cleaner since there is a lot of redundancy between the train and val loops
     main_loop = get_main_loop(
         config,
-        gcn,
+        graph_sage,
         loss_fn,
         optimizer,
         node_features,
@@ -227,13 +228,14 @@ def train_gcn_cora(config):
     else:
         config['test_perf'] = -1
 
-    # Save the latest GCN in the binaries directory
-    torch.save(
-        util.get_gcn_training_state(config, gcn),
-        os.path.join(GCN_BINARIES_PATH,
-                     util.get_available_binary_name(binary_dir=GCN_BINARIES_PATH, dataset_name=config['dataset_name'],
-                                                    model_name=ModelType.GCN.name))
-    )
+    # # Save the latest Graph SAGE in the binaries directory
+    # torch.save(
+    #     util.get_graph_sage_training_state(config, graph_sage),
+    #     os.path.join(GRAPH_SAGE_BINARIES_PATH,
+    #                  util.get_available_binary_name(binary_dir=GRAPH_SAGE_BINARIES_PATH,
+    #                                                 dataset_name=config['dataset_name'],
+    #                                                 model_name=ModelType.GraphSAGE.name))
+    # )
 
 
 def get_args():
@@ -267,13 +269,14 @@ def get_args():
     args = parser.parse_args()
 
     # Model architecture related
-    gcn_config = {
+    graph_sage_config = {
         "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
         "add_skip_connection": False,  # hurts perf on Cora
         "bias": True,  # result is not so sensitive to bias
         "dropout": 0.6,  # result is sensitive to dropout,
-        "layer_type": GCNLayerType.IMP1,
-        "model_type": ModelType.GCN,
+        "layer_type": GraphSAGELayerType.IMP1,
+        "model_type": ModelType.GraphSAGE,
+        "num_neighbors":5
     }
 
     # Wrapping training configuration into a dictionary
@@ -282,7 +285,7 @@ def get_args():
         training_config[arg] = getattr(args, arg)
 
     # Add additional config information
-    training_config = {**gcn_config, **training_config}
+    training_config = {**graph_sage_config, **training_config}
     print(training_config)
 
     training_config["num_features_per_layer"] = [get_num_input_features(training_config["dataset_name"]), 64,
@@ -295,20 +298,19 @@ def main():
     args = get_args()
 
     if not args["no_train"]:
-        train_gcn_cora(args)
+        train_graph_sage_cora(args)
 
     if not args["should_visualize"]:
         return
+    # if not args["model_name"]:
+    #     binary_name = util.get_last_binary_name(binary_dir=GRAPH_SAGE_BINARIES_PATH, dataset_name=args['dataset_name'],
+    #                                             model_name=ModelType.GraphSAGE.name)
+    #     if binary_name is None:
+    #         return
+    # else:
+    #     binary_name = f"GraphSAGE_{args['dataset_name']}_{args['model_name']}.pth"
 
-    if not args["model_name"]:
-        binary_name = util.get_last_binary_name(binary_dir=GCN_BINARIES_PATH, dataset_name=args['dataset_name'],
-                                                model_name=ModelType.GCN.name)
-        if binary_name is None:
-            return
-    else:
-        binary_name = f"GCN_{args['dataset_name']}_{args['model_name']}.pth"
-
-    visualization.visualize_gcn(binary_name=binary_name, dataset_name=args['dataset_name'])
+    #visualization.visualize_graph_sage(binary_name=binary_name, dataset_name=args['dataset_name'])
 
 
 if __name__ == "__main__":

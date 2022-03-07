@@ -1,11 +1,11 @@
 from typing import List
 
-import torch.nn
-
+import torch.nn as nn
+import torch
 from gcn.constants import GCNLayerType
 
 
-class GCN(torch.nn.Module):
+class GCN(nn.Module):
     def __init__(self, num_of_layers: int, num_features_per_layer: List[int], add_skip_connection: False, bias=True,
                  dropout=0.6, layer_type = GCNLayerType.IMP1):
         super().__init__()
@@ -18,7 +18,7 @@ class GCN(torch.nn.Module):
             layer = GCNLayer(
                 num_in_features=num_features_per_layer[i],
                 num_out_features=num_features_per_layer[i + 1],
-                activation=torch.nn.ELU() if i < num_of_layers - 1 else None,  # last layer just outputs raw scores
+                activation=nn.ELU() if i < num_of_layers - 1 else None,  # last layer just outputs raw scores
                 dropout_prob=dropout,
                 add_skip_connection=add_skip_connection,
                 bias=bias,
@@ -26,13 +26,13 @@ class GCN(torch.nn.Module):
             )
             gcn_layers.append(layer)
 
-        self.gcn_net = torch.nn.Sequential(*gcn_layers)
+        self.gcn_net = nn.Sequential(*gcn_layers)
 
     def forward(self, data):
         return self.gcn_net(data)
 
 
-class GCNLayer(torch.nn.Module):
+class GCNLayer(nn.Module):
     """
     Base class for all implementations
     """
@@ -44,13 +44,13 @@ class GCNLayer(torch.nn.Module):
         self.num_in_features = num_in_features
 
         # projection matrix to lower dimension
-        self.proj_matrix = torch.nn.Parameter(torch.FloatTensor(self.num_in_features, self.num_out_features))
+        self.proj_matrix = nn.Parameter(torch.FloatTensor(self.num_in_features, self.num_out_features))
 
-        self.dropout = torch.nn.Dropout(dropout_prob)
+        self.dropout = nn.Dropout(dropout_prob)
         self.activation = activation
 
         if bias:
-            self.bias = torch.nn.Parameter(torch.FloatTensor(num_out_features))
+            self.bias = nn.Parameter(torch.FloatTensor(num_out_features))
 
         self.add_skip_connection = add_skip_connection
 
@@ -65,21 +65,14 @@ class GCNLayer(torch.nn.Module):
         Feel free to experiment - there may be better initializations depending on your problem.
 
         """
-        torch.nn.init.xavier_uniform_(self.proj_matrix)
+        nn.init.xavier_uniform_(self.proj_matrix)
 
         if self.bias is not None:
-            torch.nn.init.zeros_(self.bias)
+            nn.init.zeros_(self.bias)
 
 
 class GCNLayerImp1(GCNLayer):
     """
-        Implementation #2 was inspired by the official GAT implementation: https://github.com/PetarV-/GAT
-
-        It's conceptually simpler than implementation #3 but computationally much less efficient.
-
-        Note: this is the naive implementation not the sparse one and it's only suitable for a transductive setting.
-        It would be fairly easy to make it work in the inductive setting as well but the purpose of this layer
-        is more educational since it's way less efficient than implementation 3.
 
     """
 
@@ -106,8 +99,6 @@ def get_layer_type(layer_type):
     assert isinstance(layer_type, GCNLayerType), f'Expected {GCNLayerType} got {type(layer_type)}.'
 
     if layer_type == GCNLayerType.IMP1:
-        return GCNLayerImp1
-    elif layer_type == GCNLayerType.IMP2:
         return GCNLayerImp1
     else:
         raise Exception(f'Layer type {layer_type} not yet supported.')

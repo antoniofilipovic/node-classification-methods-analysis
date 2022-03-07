@@ -13,7 +13,9 @@ class VisualizationType(enum.Enum):
 class ModelType(enum.Enum):
     GCN = 0
     NODE2VEC = 1
-    NONE = 3
+    GraphSAGE = 2
+    GAT = 3
+    NONE = 4
 
 
 CORA_NUM_INPUT_FEATURES = 1433
