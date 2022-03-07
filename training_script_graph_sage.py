@@ -95,7 +95,7 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
             optimizer.zero_grad()  # clean the trainable weights gradients in the computational graph (.grad fields)
             loss.backward()  # compute the gradients for every trainable weight in the computational graph
             optimizer.step()  # apply the gradients to weights
-     
+
         # Calculate the main metric - accuracy
 
         # Finds the index of maximum (unnormalized) score for every node and that's the class prediction for that node.
@@ -247,7 +247,7 @@ def get_args():
     parser.add_argument("--num_of_epochs", type=int, help="number of training epochs", default=1000)
     parser.add_argument("--patience_period", type=int,
                         help="number of epochs with no improvement on val before terminating", default=1000)
-    parser.add_argument("--lr", type=float, help="model learning rate", default=5e-3)
+    parser.add_argument("--lr", type=float, help="model learning rate", default=1e-2)
     parser.add_argument("--weight_decay", type=float, help="L2 regularization on model weights", default=5e-4)
     parser.add_argument("--should_test", action='store_true', default=True,
                         help='should test the model on the test dataset? (no by default)')
@@ -273,7 +273,7 @@ def get_args():
         "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
         "add_skip_connection": False,  # hurts perf on Cora
         "bias": True,  # result is not so sensitive to bias
-        "dropout": 0.6,  # result is sensitive to dropout,
+        "dropout": 0.5,  # result is sensitive to dropout,
         "layer_type": GraphSAGELayerType.IMP1,
         "model_type": ModelType.GraphSAGE,
         "num_neighbors":5

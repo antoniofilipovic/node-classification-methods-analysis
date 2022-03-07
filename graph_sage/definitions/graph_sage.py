@@ -70,7 +70,8 @@ class GraphSAGELayerImp1(nn.Module):
         self.linear = nn.Linear(in_features=self.num_in_features * 2, out_features=self.num_out_features)
         self.num_neighbors = num_neighbors
         self.relu = nn.ReLU()
-
+        self.bns = nn.BatchNorm1d(self.num_out_features)
+        self.dropout = nn.Dropout(dropout_prob)
     def forward(self, data: Tuple[torch.Tensor, List[np.array], List[Dict[int, int]],
                                   List[List[int]]]):
         features, node_layers, mappings, global_neighbors = data
@@ -88,6 +89,9 @@ class GraphSAGELayerImp1(nn.Module):
         out = self.linear(out)
         if self.layer_num < self.max_layer_num:
             out = self.relu(out)
+            out = self.bns(out)
+            out = self.dropout(out)
+            out.div(out.norm(dim=1, keepdim=True) + 1e-6)
 
         if self.layer_num != self.max_layer_num:
             return out, node_layers, mappings, global_neighbors
