@@ -18,7 +18,7 @@ class GraphSAGE(nn.Module):
         self.device = device
         self.num_neighbors = num_neighbors
 
-        gcn_layers = []  # collect GCN layers
+        gcn_layers = []  # collect GraphSAGE layers
         GraphSAGELayer = get_layer_type(layer_type=layer_type)
         for i in range(num_of_layers):
             layer = GraphSAGELayer(
@@ -89,9 +89,9 @@ class GraphSAGELayerImp1(nn.Module):
         out = self.linear(out)
         if self.layer_num < self.max_layer_num:
             out = self.relu(out)
-            out = self.bns(out)
+            #out = self.bns(out)
             out = self.dropout(out)
-            out.div(out.norm(dim=1, keepdim=True) + 1e-6)
+            #out.div(out.norm(dim=1, keepdim=True) + 1e-6)
 
         if self.layer_num != self.max_layer_num:
             return out, node_layers, mappings, global_neighbors

@@ -49,7 +49,8 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
 
     # node_features shape = (N, FIN)
     # adj_matrix csr_matrix
-    graph_data = (node_features, adj_matrix)  # pack data into tuples because Graph SAGE uses nn.Sequential which requires it
+    graph_data = (
+        node_features, adj_matrix)  # pack data into tuples because Graph SAGE uses nn.Sequential which requires it
 
     def get_node_indices(phase):
         if phase == LoopPhase.TRAIN:
@@ -178,10 +179,10 @@ def train_graph_sage_cora(config):
     graph_sage = GraphSAGE(
         num_of_layers=config['num_of_layers'],
         num_features_per_layer=config['num_features_per_layer'],
-        device = device,
+        device=device,
         dropout=config['dropout'],
         layer_type=config['layer_type'],
-        num_neighbors= config['num_neighbors']
+        num_neighbors=config['num_neighbors']
     ).to(device)
 
     # Step 3: Prepare other training related utilities (loss & optimizer and decorator function)
@@ -228,14 +229,14 @@ def train_graph_sage_cora(config):
     else:
         config['test_perf'] = -1
 
-    # # Save the latest Graph SAGE in the binaries directory
-    # torch.save(
-    #     util.get_graph_sage_training_state(config, graph_sage),
-    #     os.path.join(GRAPH_SAGE_BINARIES_PATH,
-    #                  util.get_available_binary_name(binary_dir=GRAPH_SAGE_BINARIES_PATH,
-    #                                                 dataset_name=config['dataset_name'],
-    #                                                 model_name=ModelType.GraphSAGE.name))
-    # )
+    # Save the latest Graph SAGE in the binaries directory
+    torch.save(
+        util.get_graph_sage_training_state(config, graph_sage),
+        os.path.join(GRAPH_SAGE_BINARIES_PATH,
+                     util.get_available_binary_name(binary_dir=GRAPH_SAGE_BINARIES_PATH,
+                                                    dataset_name=config['dataset_name'],
+                                                    model_name=ModelType.GraphSAGE.name))
+    )
 
 
 def get_args():
@@ -244,10 +245,10 @@ def get_args():
     parser.add_argument("--no_train", action='store_true', default=False, required=False)
 
     # Training related
-    parser.add_argument("--num_of_epochs", type=int, help="number of training epochs", default=1000)
+    parser.add_argument("--num_of_epochs", type=int, help="number of training epochs", default=5)
     parser.add_argument("--patience_period", type=int,
-                        help="number of epochs with no improvement on val before terminating", default=1000)
-    parser.add_argument("--lr", type=float, help="model learning rate", default=1e-2)
+                        help="number of epochs with no improvement on val before terminating", default=100)
+    parser.add_argument("--lr", type=float, help="model learning rate", default=5e-3)
     parser.add_argument("--weight_decay", type=float, help="L2 regularization on model weights", default=5e-4)
     parser.add_argument("--should_test", action='store_true', default=True,
                         help='should test the model on the test dataset? (no by default)')
@@ -258,7 +259,7 @@ def get_args():
     parser.add_argument("--dataset_name", choices=[el.name for el in DatasetType], help='dataset to use for training',
                         default=DatasetType.CORA.name)
     parser.add_argument("--should_visualize", action='store_true', help='should visualize the dataset? (no by default)')
-    parser.add_argument("--model_name", type=str, required=False)
+    parser.add_argument("--model_number", type=str, required=False)
 
     # Logging/debugging/checkpoint related (helps a lot with experimentation)
     parser.add_argument("--enable_tensorboard", action='store_true', help="enable tensorboard logging (no by default)")
@@ -268,28 +269,26 @@ def get_args():
                         help="checkpoint model saving (epoch) freq (None for no logging)", default=1000)
     args = parser.parse_args()
 
-    # Model architecture related
-    graph_sage_config = {
-        "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
-        "add_skip_connection": False,  # hurts perf on Cora
-        "bias": True,  # result is not so sensitive to bias
-        "dropout": 0.5,  # result is sensitive to dropout,
-        "layer_type": GraphSAGELayerType.IMP1,
-        "model_type": ModelType.GraphSAGE,
-        "num_neighbors":5
-    }
-
     # Wrapping training configuration into a dictionary
     training_config = dict()
     for arg in vars(args):
         training_config[arg] = getattr(args, arg)
 
+    # Model architecture related
+    graph_sage_config = {
+        "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
+        "dropout": 0.6,  # result is sensitive to dropout,
+        "layer_type": GraphSAGELayerType.IMP1,
+        "model_type": ModelType.GraphSAGE,
+        "num_neighbors": 10,
+        "num_features_per_layer": [get_num_input_features(training_config["dataset_name"]), 256,
+                                   get_num_classes(training_config["dataset_name"])]
+    }
+
     # Add additional config information
     training_config = {**graph_sage_config, **training_config}
-    print(training_config)
 
-    training_config["num_features_per_layer"] = [get_num_input_features(training_config["dataset_name"]), 64,
-                                                 get_num_classes(training_config["dataset_name"])]
+    print(training_config)
 
     return training_config
 
@@ -302,15 +301,16 @@ def main():
 
     if not args["should_visualize"]:
         return
-    # if not args["model_name"]:
-    #     binary_name = util.get_last_binary_name(binary_dir=GRAPH_SAGE_BINARIES_PATH, dataset_name=args['dataset_name'],
-    #                                             model_name=ModelType.GraphSAGE.name)
-    #     if binary_name is None:
-    #         return
-    # else:
-    #     binary_name = f"GraphSAGE_{args['dataset_name']}_{args['model_name']}.pth"
 
-    #visualization.visualize_graph_sage(binary_name=binary_name, dataset_name=args['dataset_name'])
+    if not args["model_number"]:
+        binary_name = util.get_last_binary_name(binary_dir=GRAPH_SAGE_BINARIES_PATH, dataset_name=args['dataset_name'],
+                                                model_name=ModelType.GraphSAGE.name)
+        if binary_name is None:
+            return
+    else:
+        binary_name = f"GraphSAGE_{args['dataset_name']}_{args['model_number']}.pth"
+
+    visualization.visualize_graph_sage(binary_name=binary_name, dataset_name=args['dataset_name'])
 
 
 if __name__ == "__main__":

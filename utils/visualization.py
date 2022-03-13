@@ -9,10 +9,11 @@ from sklearn.manifold import TSNE
 from constants import DatasetType, cora_label_to_color_map, VisualizationType, ModelType
 from gcn.constants import GCNLayerType, GCN_BINARIES_PATH
 from gcn.definitions.gcn import GCN
-from graph_sage.constants import GraphSAGELayerType
+from graph_sage.constants import GraphSAGELayerType, GRAPH_SAGE_BINARIES_PATH
 from graph_sage.definitions.graph_sage import GraphSAGE
 from utils.data_loading import load_graph_data
-from utils.util import convert_adj_to_edge_index, print_model_metadata, name_to_layer_type
+from utils.util import convert_adj_to_edge_index, print_model_metadata, \
+    graph_sage_name_to_layer_type, gcn_name_to_layer_type
 
 
 def visualize_graph(edge_index, node_labels, dataset_name):
@@ -103,7 +104,7 @@ def tsne_visualize_embeddings(all_nodes_unnormalized_scores, node_labels):
     plt.show()
 
 
-def visualize_gcn(binary_name:str, dataset_name:str,
+def visualize_gcn(binary_name: str, dataset_name: str,
                   visualization_type=VisualizationType.EMBEDDINGS):
     """
     Notes on t-SNE:
@@ -117,7 +118,6 @@ def visualize_gcn(binary_name:str, dataset_name:str,
         'dataset_name': dataset_name,
         'model_type': ModelType.GCN,
         'layer_type': GCNLayerType.IMP1,
-        'should_visualize': False,  # don't visualize the dataset
     }
 
     # Step 1: Prepare the data
@@ -134,7 +134,7 @@ def visualize_gcn(binary_name:str, dataset_name:str,
         add_skip_connection=model_state['add_skip_connection'],
         bias=model_state['bias'],
         dropout=model_state['dropout'],
-        layer_type=name_to_layer_type(model_state['layer_type']),
+        layer_type=gcn_name_to_layer_type(model_state['layer_type']),
     ).to(device)
 
     print_model_metadata(model_state)
@@ -159,9 +159,8 @@ def visualize_gcn(binary_name:str, dataset_name:str,
         tsne_visualize_embeddings(all_nodes_unnormalized_scores, node_labels)
 
 
-
-def visualize_graph_sage(binary_name:str, dataset_name:str,
-                  visualization_type=VisualizationType.EMBEDDINGS):
+def visualize_graph_sage(binary_name: str, dataset_name: str,
+                         visualization_type=VisualizationType.EMBEDDINGS):
     """
     Notes on t-SNE:
     Check out this one for more intuition on how to tune t-SNE: https://distill.pub/2016/misread-tsne/
@@ -174,7 +173,6 @@ def visualize_graph_sage(binary_name:str, dataset_name:str,
         'dataset_name': dataset_name,
         'model_type': ModelType.GraphSAGE,
         'layer_type': GraphSAGELayerType.IMP1,
-        'should_visualize': False,  # don't visualize the dataset
     }
 
     # Step 1: Prepare the data
@@ -182,16 +180,16 @@ def visualize_graph_sage(binary_name:str, dataset_name:str,
         node_features, node_labels, topology = load_graph_data(config, device)
 
     # Step 2: Prepare the model
-    model_path = os.path.join(GCN_BINARIES_PATH, binary_name)
+    model_path = os.path.join(GRAPH_SAGE_BINARIES_PATH, binary_name)
     model_state = torch.load(model_path, map_location=device)
 
     graph_sage = GraphSAGE(
         num_of_layers=model_state['num_of_layers'],
         num_features_per_layer=model_state['num_features_per_layer'],
-        add_skip_connection=model_state['add_skip_connection'],
-        bias=model_state['bias'],
         dropout=model_state['dropout'],
-        layer_type=name_to_layer_type(model_state['layer_type']),
+        layer_type=graph_sage_name_to_layer_type(model_state['layer_type']),
+        num_neighbors=model_state["num_neighbors"],
+        device=device,
     ).to(device)
 
     print_model_metadata(model_state)
@@ -206,12 +204,10 @@ def visualize_graph_sage(binary_name:str, dataset_name:str,
     # It would be saving activations for backprop but we are not going to do any model training just the prediction.
     with torch.no_grad():
         # Step 3: Run predictions and collect the high dimensional data
-        all_nodes_unnormalized_scores, _ = graph_sage((node_features, topology))  # shape = (N, num of classes)
+        all_nodes_unnormalized_scores = graph_sage((node_features, topology))  # shape = (N, num of classes)
         all_nodes_unnormalized_scores = all_nodes_unnormalized_scores.cpu().numpy()
 
-    # edge_index = convert_adj_to_edge_index(topology)
     if visualization_type == VisualizationType.EMBEDDINGS:
         # visualize embeddings (using t-SNE)
         node_labels = node_labels.cpu().numpy()
         tsne_visualize_embeddings(all_nodes_unnormalized_scores, node_labels)
-

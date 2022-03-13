@@ -49,10 +49,12 @@ def process_citation_network(adj_matrix, node_labels, node_features, model_type,
 
     # not good design pattern
     if model_type == ModelType.NODE2VEC:
-
         return node_features, node_labels, adj_matrix
 
     if model_type == ModelType.GraphSAGE:
+        adj_matrix += np.transpose(adj_matrix)
+        adj_matrix += np.identity(adj_matrix.shape[0])  # add self connections
+        adj_matrix[adj_matrix > 0] = 1  # multiple edges not allowed
 
         # normalizing node features
         nodes_features = sp.csr_matrix(node_features)
@@ -67,7 +69,7 @@ def process_citation_network(adj_matrix, node_labels, node_features, model_type,
 
     if model_type == ModelType.GCN:
         adj_matrix += np.identity(adj_matrix.shape[0])  # add self connections
-        adj_matrix+=np.transpose(adj_matrix)
+        adj_matrix += np.transpose(adj_matrix)
         adj_matrix[adj_matrix > 0] = 1  # multiple edges not allowed
         rowsum = np.array(adj_matrix.sum(1))
         r_inv = np.power(rowsum, -0.5).flatten()
@@ -88,7 +90,7 @@ def process_citation_network(adj_matrix, node_labels, node_features, model_type,
     node_labels = torch.tensor(node_labels, dtype=torch.long, device=device)  # Cross entropy expects a long int
     node_features = torch.tensor(nodes_features.todense(), dtype=torch.float, device=device)
 
-    return  node_features, node_labels, adj_matrix
+    return node_features, node_labels, adj_matrix
 
 
 def load_graph_data(training_config, device=None):

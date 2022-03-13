@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 
 from gcn.constants import GCNLayerType
+from graph_sage.constants import GraphSAGELayerType
 
 
 def convert_adj_dict_to_adj_matrix(adj_dict):
@@ -69,36 +70,27 @@ def get_gcn_training_state(training_config, model):
 
     return training_state
 
-def get_graph_sage_training_state(training_config, clf, embeddings):
+
+def get_graph_sage_training_state(training_config, model):
     training_state = {
         # Training details
         "dataset_name": training_config['dataset_name'],
-        "num_of_epochs": training_config['epochs'],
+        "num_of_epochs": training_config['num_of_epochs'],
         "test_perf": training_config['test_perf'],
 
-        # Model structure
-        "p": training_config['p'],
-        "q": training_config['q'],
-        "num_walks": training_config['num_walks'],
-        "walk_length": training_config['walk_length'],
-        "vector_size": training_config['vector_size'],
-        "alpha": training_config['alpha'],
-        "window": training_config['window'],
-        "min_count": training_config['min_count'],
-        "seed": training_config['seed'],
-        "workers": training_config['workers'],
-        "min_alpha": training_config['min_alpha'],
-        "sg": training_config['sg'],
-        "hs": training_config['hs'],
-        "negative": training_config['negative'],
-        "epochs": training_config['epochs'],
+        "num_of_layers": training_config['num_of_layers'],
+        "num_features_per_layer": training_config['num_features_per_layer'],
+        "num_neighbors": training_config['num_neighbors'],
+        "dropout": training_config['dropout'],
+        "layer_type": training_config['layer_type'].name,
 
         # Model state
-        "clf": clf,
-        "embeddings": embeddings
+        "state_dict": model.state_dict()
+
     }
 
     return training_state
+
 
 def get_node2vec_training_state(training_config, clf, embeddings):
     training_state = {
@@ -132,7 +124,7 @@ def get_node2vec_training_state(training_config, clf, embeddings):
     return training_state
 
 
-def get_last_binary_name(binary_dir: str, dataset_name: str, model_name: str,):
+def get_last_binary_name(binary_dir: str, dataset_name: str, model_name: str, ):
     prefix = f'{model_name}_{dataset_name}'
 
     def valid_binary_name(binary_name):
@@ -167,7 +159,7 @@ def print_model_metadata(training_state):
     print(f'{"*" * len(header)}\n')
 
 
-def name_to_layer_type(name):
+def gcn_name_to_layer_type(name):
     if name == GCNLayerType.IMP1.name:
         return GCNLayerType.IMP1
     elif name == GCNLayerType.IMP2.name:
@@ -175,6 +167,11 @@ def name_to_layer_type(name):
     else:
         raise Exception(f'Name {name} not supported.')
 
+def graph_sage_name_to_layer_type(name):
+    if name == GraphSAGELayerType.IMP1.name:
+        return GraphSAGELayerType.IMP1
+    else:
+        raise Exception(f'Name {name} not supported.')
 
 def pickle_save(path, data):
     with open(path, 'wb') as file:
