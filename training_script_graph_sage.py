@@ -7,7 +7,8 @@ import torch.cuda
 
 from torch.optim import Adam
 
-from graph_sage.constants import GRAPH_SAGE_CHECKPOINTS_PATH, GRAPH_SAGE_BINARIES_PATH, GraphSAGELayerType
+from graph_sage.constants import GRAPH_SAGE_CHECKPOINTS_PATH, GRAPH_SAGE_BINARIES_PATH, GraphSAGELayerType, \
+    GraphSAGEAggregatorType
 from graph_sage.definitions.graph_sage import GraphSAGE
 from utils.data_loading import load_graph_data
 from constants import DatasetType, LoopPhase, ModelType
@@ -163,7 +164,8 @@ def train_graph_sage_cora(config):
         device=device,
         dropout=config['dropout'],
         layer_type=config['layer_type'],
-        num_neighbors=config['num_neighbors']
+        num_neighbors=config['num_neighbors'],
+        aggregator_type = config['aggregator_type']
     ).to(device)
 
     # Step 3: Prepare other training related utilities (loss & optimizer and decorator function)
@@ -261,9 +263,10 @@ def get_args():
         "dropout": 0.6,  # result is sensitive to dropout,
         "layer_type": GraphSAGELayerType.IMP1,
         "model_type": ModelType.GraphSAGE,
-        "num_neighbors": 10,
-        "num_features_per_layer": [datasets_util.get_num_input_features(training_config["dataset_name"]), 256,
-                                   datasets_util.get_num_classes(training_config["dataset_name"])]
+        "num_neighbors": 50,
+        "num_features_per_layer": [datasets_util.get_num_input_features(training_config["dataset_name"]), 8,
+                                   datasets_util.get_num_classes(training_config["dataset_name"])],
+        "aggregator_type":GraphSAGEAggregatorType.Mean,
     }
 
     # Add additional config information

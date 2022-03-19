@@ -194,6 +194,7 @@ def visualize_graph_sage(binary_name: str, dataset_name: str,
         layer_type=graph_sage_util.name_to_layer_type(model_state['layer_type']),
         num_neighbors=model_state["num_neighbors"],
         device=device,
+        aggregator_type=graph_sage_util.name_to_agg_type(model_state['aggregator_type'])
     ).to(device)
 
     print_model_metadata(model_state)

@@ -83,6 +83,7 @@ def get_graph_sage_training_state(training_config, model):
         "num_neighbors": training_config['num_neighbors'],
         "dropout": training_config['dropout'],
         "layer_type": training_config['layer_type'].name,
+        "aggregator_type":training_config['aggregator_type'].name,
 
         # Model state
         "state_dict": model.state_dict()
