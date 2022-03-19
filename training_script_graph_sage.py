@@ -168,6 +168,7 @@ def train_graph_sage_cora(config):
         aggregator_type = config['aggregator_type']
     ).to(device)
 
+
     # Step 3: Prepare other training related utilities (loss & optimizer and decorator function)
     loss_fn = nn.CrossEntropyLoss(reduction='mean')
     optimizer = Adam(graph_sage.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
@@ -260,13 +261,13 @@ def get_args():
     # Model architecture related
     graph_sage_config = {
         "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
-        "dropout": 0.6,  # result is sensitive to dropout,
+        "dropout": 0.7,  # result is sensitive to dropout,
         "layer_type": GraphSAGELayerType.IMP1,
         "model_type": ModelType.GraphSAGE,
         "num_neighbors": 50,
-        "num_features_per_layer": [datasets_util.get_num_input_features(training_config["dataset_name"]), 8,
+        "num_features_per_layer": [datasets_util.get_num_input_features(training_config["dataset_name"]), 128,
                                    datasets_util.get_num_classes(training_config["dataset_name"])],
-        "aggregator_type":GraphSAGEAggregatorType.Mean,
+        "aggregator_type":GraphSAGEAggregatorType.MaxPool,
     }
 
     # Add additional config information

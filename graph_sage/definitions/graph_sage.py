@@ -5,7 +5,8 @@ import torch
 import torch.nn as nn
 
 from graph_sage.constants import GraphSAGELayerType, GraphSAGEAggregatorType
-from graph_sage.definitions.aggregators import Aggregator, MeanAggregator, MaxPoolAggregator, MeanPoolAggregator
+from graph_sage.definitions.aggregators import Aggregator, MeanAggregator, MaxPoolAggregator, MeanPoolAggregator, \
+    GCNAggregator
 
 
 class GraphSAGE(nn.Module):
@@ -72,7 +73,7 @@ class GraphSAGELayer(nn.Module):
         self.aggregator = Aggregator(input_dim=self.num_in_features, output_dim=self.num_in_features,
                                      device=device)
 
-        if aggregator_type == GraphSAGEAggregatorType.Mean:
+        if aggregator_type == GraphSAGEAggregatorType.GCN:
             self.linear = nn.Linear(in_features=self.num_in_features, out_features=self.num_out_features)  # no concat
         else:
             self.linear = nn.Linear(in_features=self.num_in_features * 2, out_features=self.num_out_features)
@@ -106,7 +107,7 @@ class GraphSAGELayerImp1(GraphSAGELayer):
 
         # unless we don't use MEAN aggregator, we need to concat features from previous layer, but in MEAN
         # we do that in aggregation part already
-        if self.aggregator_type != GraphSAGEAggregatorType.Mean:
+        if self.aggregator_type != GraphSAGEAggregatorType.GCN:
             cur_mapped_nodes = np.array([mapping[v] for v in nodes], dtype=np.int64)
             out = torch.cat((out[cur_mapped_nodes, :], aggregate), dim=1)
 
@@ -130,8 +131,9 @@ def get_layer_type(layer_type: GraphSAGELayerType):
 def get_aggregator_type(aggregator_type: GraphSAGEAggregatorType):
     assert isinstance(aggregator_type,
                       GraphSAGEAggregatorType), f'Expected {GraphSAGEAggregatorType} got {type(aggregator_type)}.'
-
-    if aggregator_type == GraphSAGEAggregatorType.Mean:
+    if aggregator_type == GraphSAGEAggregatorType.GCN:
+        return GCNAggregator
+    elif aggregator_type == GraphSAGEAggregatorType.Mean:
         return MeanAggregator
     elif aggregator_type == GraphSAGEAggregatorType.MeanPool:
         return MeanPoolAggregator

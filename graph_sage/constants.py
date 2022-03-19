@@ -7,6 +7,7 @@ class GraphSAGELayerType(enum.Enum):
 
 
 class GraphSAGEAggregatorType(enum.Enum):
+    GCN = "gcn"
     Mean = "mean"
     MaxPool = "max_pool"
     MeanPool = "mean_pool"

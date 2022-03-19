@@ -9,7 +9,9 @@ def name_to_layer_type(name: str) -> GraphSAGELayerType:
 
 
 def name_to_agg_type(name: str) -> GraphSAGEAggregatorType:
-    if name == GraphSAGEAggregatorType.Mean.name:
+    if name == GraphSAGEAggregatorType.GCN.name:
+        return GraphSAGEAggregatorType.GCN
+    elif name == GraphSAGEAggregatorType.Mean.name:
         return GraphSAGEAggregatorType.Mean
     elif name == GraphSAGEAggregatorType.MeanPool.name:
         return GraphSAGEAggregatorType.MeanPool
