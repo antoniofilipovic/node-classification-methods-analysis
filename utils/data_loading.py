@@ -67,6 +67,15 @@ def process_citation_network(adj_matrix, node_labels, node_features, model_type,
         node_features = torch.tensor(nodes_features.todense(), dtype=torch.float, device=device)
         return node_features, node_labels, adj_matrix
 
+    if model_type == ModelType.GAT:
+        adj_matrix += np.transpose(adj_matrix)
+        #todo add undirected
+        adj_matrix += np.identity(adj_matrix.shape[0])  # add self connections
+        adj_matrix[adj_matrix > 0] = 1  # multiple edges not allowed
+        adj_matrix[adj_matrix == 0] = -np.inf  # make it a mask instead of adjacency matrix (used to mask softmax)
+        adj_matrix[adj_matrix == 1] = 0
+
+
     if model_type == ModelType.GCN:
         adj_matrix += np.identity(adj_matrix.shape[0])  # add self connections
         adj_matrix += np.transpose(adj_matrix)

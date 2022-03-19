@@ -57,14 +57,6 @@ class GCNLayer(nn.Module):
         self.init_params()
 
     def init_params(self):
-        """
-        The reason we're using Glorot (aka Xavier uniform) initialization is because it's a default TF initialization:
-            https://stackoverflow.com/questions/37350131/what-is-the-default-variable-initializer-in-tensorflow
-
-        The original repo was developed in TensorFlow (TF) and they used the default initialization.
-        Feel free to experiment - there may be better initializations depending on your problem.
-
-        """
         nn.init.xavier_uniform_(self.proj_matrix)
 
         if self.bias is not None:
@@ -89,7 +81,7 @@ class GCNLayerImp1(GCNLayer):
         # shape = (N,N) * (N, FOUT) = (N, FOUT)
         output = torch.mm(preprocessed_adj_matrix, projected_features)
 
-        return (output, preprocessed_adj_matrix)
+        return output, preprocessed_adj_matrix
 
 
 #

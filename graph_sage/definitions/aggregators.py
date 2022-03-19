@@ -14,8 +14,7 @@ class Aggregator(nn.Module):
             connected layer in pooling aggregators. Default: None.
         output_dim : int or None
             Dimension of output node features. Used for defining fully
-            connected layer in pooling aggregators. Currently only works when
-            input_dim = output_dim. Default: None.
+            connected layer in pooling aggregators.
         """
         super().__init__()
 

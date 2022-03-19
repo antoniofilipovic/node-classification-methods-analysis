@@ -4,11 +4,11 @@ import time
 
 import torch.nn as nn
 import torch.cuda
-
 from torch.optim import Adam
 
-from graph_sage.constants import GRAPH_SAGE_CHECKPOINTS_PATH, GRAPH_SAGE_BINARIES_PATH, GraphSAGELayerType
-from graph_sage.definitions.graph_sage import GraphSAGE
+from gat.constants import GATLayerType, GAT_CHECKPOINTS_PATH, GAT_BINARIES_PATH
+from gat.definitions.gat import GAT
+
 from utils.data_loading import load_graph_data
 from constants import DatasetType, LoopPhase, ModelType
 
@@ -19,8 +19,7 @@ import utils.visualization as visualization
 
 
 
-def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_features, node_labels, adj_matrix,
-                  train_indices,
+def get_main_loop(config, gat, cross_entropy_loss, optimizer, node_features, node_labels, adj_matrix, train_indices,
                   val_indices, test_indices, patience_period, time_start):
     node_dim = 0  # node axis
 
@@ -28,10 +27,8 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
     val_labels = node_labels.index_select(node_dim, val_indices)
     test_labels = node_labels.index_select(node_dim, test_indices)
 
-    # node_features shape = (N, FIN)
-    # adj_matrix csr_matrix
-    graph_data = (
-        node_features, adj_matrix)  # pack data into tuples because Graph SAGE uses nn.Sequential which requires it
+    # node_features shape = (N, FIN), edge_index shape = (2, E)
+    graph_data = (node_features, adj_matrix)  # pack data into tuples because GAT uses nn.Sequential which requires it
 
     def get_node_indices(phase):
         if phase == LoopPhase.TRAIN:
@@ -55,9 +52,9 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
         # Certain modules behave differently depending on whether we're training the model or not.
         # e.g. nn.Dropout - we only want to drop model weights during the training.
         if phase == LoopPhase.TRAIN:
-            graph_sage.train()
+            gat.train()
         else:
-            graph_sage.eval()
+            gat.eval()
 
         node_indices = get_node_indices(phase)
         gt_node_labels = get_node_labels(phase)  # gt stands for ground truth
@@ -66,7 +63,7 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
         # Note: [0] just extracts the node_features part of the data (index 1 contains the edge_index)
         # shape = (N, C) where N is the number of nodes in the split (train/val/test) and C is the number of classes
 
-        nodes_unnormalized_scores = graph_sage(graph_data)[0].index_select(0, node_indices)
+        nodes_unnormalized_scores = gat(graph_data)[0].index_select(node_dim, node_indices)
 
         # In Cora dataset we will have 7 output probabilities. cross_entropy loss first applies softmax to vector,
         # and then it calculates loss
@@ -85,8 +82,6 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
         class_predictions = torch.argmax(nodes_unnormalized_scores, dim=-1)
         accuracy = torch.sum(torch.eq(class_predictions, gt_node_labels).long()).item() / len(gt_node_labels)
 
-
-
         #
         # Logging
         #
@@ -99,10 +94,10 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
 
             # Save model checkpoint
             if config['checkpoint_freq'] is not None and (epoch + 1) % config['checkpoint_freq'] == 0:
-                ckpt_model_name = f'graph_sage_{config["dataset_name"]}_ckpt_epoch_{epoch + 1}.pth'
+                ckpt_model_name = f'gat_{config["dataset_name"]}_ckpt_epoch_{epoch + 1}.pth'
                 config['test_perf'] = -1
-                torch.save(util.get_graph_sage_training_state(config, graph_sage),
-                           os.path.join(GRAPH_SAGE_CHECKPOINTS_PATH, ckpt_model_name))
+                torch.save(util.get_gat_training_state(config, gat),
+                           os.path.join(GAT_CHECKPOINTS_PATH, ckpt_model_name))
 
         elif phase == LoopPhase.VAL:
             # Log metrics
@@ -113,7 +108,7 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
             # Log to console
             if config['console_log_freq'] is not None and epoch % config['console_log_freq'] == 0:
                 print(
-                    f'Graph SAGE training: time elapsed= {(time.time() - time_start):.2f} [s] | epoch={epoch + 1} | val acc={accuracy}')
+                    f'GAT training: time elapsed= {(time.time() - time_start):.2f} [s] | epoch={epoch + 1} | val acc={accuracy}')
 
             # The "patience" logic - should we break out from the training loop? If either validation acc keeps going up
             # or the val loss keeps going down we won't stop
@@ -133,11 +128,12 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
     return main_loop  # return the decorated function
 
 
-def train_graph_sage_cora(config):
+def train_gat_cora(config):
     global BEST_VAL_PERF, BEST_VAL_LOSS
 
     # check whether you have GPU
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device( "cpu")
 
     # load data
     node_features, node_labels, adj_matrix = load_graph_data(config, device)
@@ -149,31 +145,32 @@ def train_graph_sage_cora(config):
                                                 config["dataset_name"]))
     else:
         train_indices, val_indices, test_indices = util.get_unbalanced_train_indices(
-            *datasets_util.get_train_test_val_ranges(dataset_name=config["dataset_name"]))
+            *datasets_util.get_train_test_val_ranges(dataset_name = config["dataset_name"]))
 
-    # Indices that help us extract nodes that belong to the train/val and test splits
+    # Indices that help us extract nodes that belong to the train/val and test splits, currently hardcoded
+    # question: what about training shuffle?
     train_indices = torch.as_tensor(train_indices, device=device)
     val_indices = torch.as_tensor(val_indices, device=device)
     test_indices = torch.as_tensor(test_indices, device=device)
 
     # Step 2: prepare the model
-    graph_sage = GraphSAGE(
+    gat = GAT(
         num_of_layers=config['num_of_layers'],
         num_features_per_layer=config['num_features_per_layer'],
-        device=device,
+        bias=config['bias'],
         dropout=config['dropout'],
-        layer_type=config['layer_type'],
-        num_neighbors=config['num_neighbors']
+        add_skip_connection=config['add_skip_connection'],
+        num_heads_per_layer=config['num_heads_per_layer']
     ).to(device)
 
     # Step 3: Prepare other training related utilities (loss & optimizer and decorator function)
     loss_fn = nn.CrossEntropyLoss(reduction='mean')
-    optimizer = Adam(graph_sage.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
+    optimizer = Adam(gat.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
 
     # The decorator function makes things cleaner since there is a lot of redundancy between the train and val loops
     main_loop = get_main_loop(
         config,
-        graph_sage,
+        gat,
         loss_fn,
         optimizer,
         node_features,
@@ -210,13 +207,12 @@ def train_graph_sage_cora(config):
     else:
         config['test_perf'] = -1
 
-    # Save the latest Graph SAGE in the binaries directory
+    # Save the latest GAT in the binaries directory
     torch.save(
-        util.get_graph_sage_training_state(config, graph_sage),
-        os.path.join(GRAPH_SAGE_BINARIES_PATH,
-                     util.get_available_binary_name(binary_dir=GRAPH_SAGE_BINARIES_PATH,
-                                                    dataset_name=config['dataset_name'],
-                                                    model_name=ModelType.GraphSAGE.name))
+        util.get_gat_training_state(config, gat),
+        os.path.join(GAT_BINARIES_PATH,
+                     util.get_available_binary_name(binary_dir=GAT_BINARIES_PATH, dataset_name=config['dataset_name'],
+                                                    model_name=ModelType.GAT.name))
     )
 
 
@@ -226,9 +222,9 @@ def get_args():
     parser.add_argument("--no_train", action='store_true', default=False, required=False)
 
     # Training related
-    parser.add_argument("--num_of_epochs", type=int, help="number of training epochs", default=5)
+    parser.add_argument("--num_of_epochs", type=int, help="number of training epochs", default=1000)
     parser.add_argument("--patience_period", type=int,
-                        help="number of epochs with no improvement on val before terminating", default=100)
+                        help="number of epochs with no improvement on val before terminating", default=1000)
     parser.add_argument("--lr", type=float, help="model learning rate", default=5e-3)
     parser.add_argument("--weight_decay", type=float, help="L2 regularization on model weights", default=5e-4)
     parser.add_argument("--should_test", action='store_true', default=True,
@@ -240,7 +236,7 @@ def get_args():
     parser.add_argument("--dataset_name", choices=[el.name for el in DatasetType], help='dataset to use for training',
                         default=DatasetType.CORA.name)
     parser.add_argument("--should_visualize", action='store_true', help='should visualize the dataset? (no by default)')
-    parser.add_argument("--model_number", type=str, required=False)
+    parser.add_argument("--model_name", type=str, required=False)
 
     # Logging/debugging/checkpoint related (helps a lot with experimentation)
     parser.add_argument("--enable_tensorboard", action='store_true', help="enable tensorboard logging (no by default)")
@@ -250,24 +246,28 @@ def get_args():
                         help="checkpoint model saving (epoch) freq (None for no logging)", default=1000)
     args = parser.parse_args()
 
+
+
     # Wrapping training configuration into a dictionary
     training_config = dict()
     for arg in vars(args):
         training_config[arg] = getattr(args, arg)
 
     # Model architecture related
-    graph_sage_config = {
+    gat_config = {
         "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
+        "add_skip_connection": False,  # hurts perf on Cora
+        "bias": True,  # result is not so sensitive to bias
         "dropout": 0.6,  # result is sensitive to dropout,
-        "layer_type": GraphSAGELayerType.IMP1,
-        "model_type": ModelType.GraphSAGE,
-        "num_neighbors": 10,
-        "num_features_per_layer": [datasets_util.get_num_input_features(training_config["dataset_name"]), 256,
-                                   datasets_util.get_num_classes(training_config["dataset_name"])]
+        "layer_type": GATLayerType.IMP1,
+        "model_type": ModelType.GAT,
+        "num_features_per_layer": [datasets_util.get_num_input_features(training_config["dataset_name"]), 64,
+                                    datasets_util.get_num_classes(training_config["dataset_name"])],
+        "num_heads_per_layer": [8, 1],
     }
 
     # Add additional config information
-    training_config = {**graph_sage_config, **training_config}
+    training_config = {**gat_config, **training_config}
 
     print(training_config)
 
@@ -278,21 +278,22 @@ def main():
     args = get_args()
 
     if not args["no_train"]:
-        train_graph_sage_cora(args)
+        train_gat_cora(args)
 
     if not args["should_visualize"]:
         return
 
-    if not args["model_number"]:
-        binary_name = util.get_last_binary_name(binary_dir=GRAPH_SAGE_BINARIES_PATH, dataset_name=args['dataset_name'],
-                                                model_name=ModelType.GraphSAGE.name)
+    if not args["model_name"]:
+        binary_name = util.get_last_binary_name(binary_dir=GAT_BINARIES_PATH, dataset_name=args['dataset_name'],
+                                                model_name=ModelType.GAT.name)
         if binary_name is None:
             return
     else:
-        binary_name = f"GraphSAGE_{args['dataset_name']}_{args['model_number']}.pth"
+        binary_name = f"GAT_{args['dataset_name']}_{args['model_name']}.pth"
 
-    visualization.visualize_graph_sage(binary_name=binary_name, dataset_name=args['dataset_name'])
+    visualization.visualize_gat(binary_name=binary_name, dataset_name=args['dataset_name'])
 
 
 if __name__ == "__main__":
+    torch.cuda.empty_cache()
     main()

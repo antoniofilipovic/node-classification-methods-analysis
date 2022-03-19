@@ -18,7 +18,7 @@ class GraphSAGE(nn.Module):
         self.device = device
         self.num_neighbors = num_neighbors
 
-        gcn_layers = []  # collect GraphSAGE layers
+        graph_sage_layers = []  # collect GraphSAGE layers
         GraphSAGELayer = get_layer_type(layer_type=layer_type)
         for i in range(num_of_layers):
             layer = GraphSAGELayer(
@@ -31,9 +31,9 @@ class GraphSAGE(nn.Module):
                 device=self.device,
                 num_neighbors=self.num_neighbors
             )
-            gcn_layers.append(layer)
+            graph_sage_layers.append(layer)
 
-        self.gcn_net = nn.Sequential(*gcn_layers)
+        self.graph_sage_net = nn.Sequential(*graph_sage_layers)
 
     def _form_computation_graph(self, neighbors, idx):
         node_layers = [np.array(idx)]
@@ -52,10 +52,10 @@ class GraphSAGE(nn.Module):
     def forward(self, data):
         node_features, adj_matrix = data
         node_layers, mappings = self._form_computation_graph(adj_matrix.rows, np.arange(0, node_features.shape[0]))
-        return self.gcn_net((node_features, node_layers, mappings, adj_matrix.rows))
+        return self.graph_sage_net((node_features, node_layers, mappings, adj_matrix.rows))
 
 
-class GraphSAGELayerImp1(nn.Module):
+class GraphSAGELayer(nn.Module):
     def __init__(self, layer_num: int, max_layer_num: int, num_in_features: int, num_out_features: int,
                  dropout_prob: float, AGGREGATOR_TYPE, device: torch.device, num_neighbors: int):
         super().__init__()
@@ -70,8 +70,15 @@ class GraphSAGELayerImp1(nn.Module):
         self.linear = nn.Linear(in_features=self.num_in_features * 2, out_features=self.num_out_features)
         self.num_neighbors = num_neighbors
         self.relu = nn.ReLU()
-        self.bns = nn.BatchNorm1d(self.num_out_features)
         self.dropout = nn.Dropout(dropout_prob)
+
+
+class GraphSAGELayerImp1(GraphSAGELayer):
+    def __init__(self, layer_num: int, max_layer_num: int, num_in_features: int, num_out_features: int,
+                 dropout_prob: float, AGGREGATOR_TYPE, device: torch.device, num_neighbors: int):
+        super().__init__(layer_num, max_layer_num, num_in_features, num_out_features, dropout_prob, AGGREGATOR_TYPE,
+                         device, num_neighbors)
+
     def forward(self, data: Tuple[torch.Tensor, List[np.array], List[Dict[int, int]],
                                   List[List[int]]]):
         features, node_layers, mappings, global_neighbors = data
@@ -89,14 +96,9 @@ class GraphSAGELayerImp1(nn.Module):
         out = self.linear(out)
         if self.layer_num < self.max_layer_num:
             out = self.relu(out)
-            #out = self.bns(out)
             out = self.dropout(out)
-            #out.div(out.norm(dim=1, keepdim=True) + 1e-6)
 
-        if self.layer_num != self.max_layer_num:
-            return out, node_layers, mappings, global_neighbors
-
-        return out
+        return out, node_layers, mappings, global_neighbors
 
 
 def get_layer_type(layer_type: GraphSAGELayerType):

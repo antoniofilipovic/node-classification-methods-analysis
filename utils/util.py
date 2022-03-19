@@ -92,6 +92,29 @@ def get_graph_sage_training_state(training_config, model):
     return training_state
 
 
+def get_gat_training_state(training_config, model):
+    training_state = {
+        # Training details
+        "dataset_name": training_config['dataset_name'],
+        "num_of_epochs": training_config['num_of_epochs'],
+        "test_perf": training_config['test_perf'],
+
+        # Model structure
+        "num_of_layers": training_config['num_of_layers'],
+        "num_heads_per_layer": training_config['num_heads_per_layer'],
+        "num_features_per_layer": training_config['num_features_per_layer'],
+        "add_skip_connection": training_config['add_skip_connection'],
+        "bias": training_config['bias'],
+        "dropout": training_config['dropout'],
+        "layer_type": training_config['layer_type'].name,
+
+        # Model state
+        "state_dict": model.state_dict()
+    }
+
+    return training_state
+
+
 def get_node2vec_training_state(training_config, clf, embeddings):
     training_state = {
         # Training details
@@ -158,20 +181,6 @@ def print_model_metadata(training_state):
             print(f'{key}: {value}')
     print(f'{"*" * len(header)}\n')
 
-
-def gcn_name_to_layer_type(name):
-    if name == GCNLayerType.IMP1.name:
-        return GCNLayerType.IMP1
-    elif name == GCNLayerType.IMP2.name:
-        return GCNLayerType.IMP2
-    else:
-        raise Exception(f'Name {name} not supported.')
-
-def graph_sage_name_to_layer_type(name):
-    if name == GraphSAGELayerType.IMP1.name:
-        return GraphSAGELayerType.IMP1
-    else:
-        raise Exception(f'Name {name} not supported.')
 
 def pickle_save(path, data):
     with open(path, 'wb') as file:
