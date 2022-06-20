@@ -132,7 +132,7 @@ class GATLayerImp1(GATLayer):
         source_scores = source_scores.permute(1, 0, 2)
         target_scores = target_scores.permute(1, 2, 0)
 
-        # here we have automatic broadcasting -> shape = (NH, N, N)
+        # automatic broadcasting -> shape = (NH, N, N)
         all_scores = self.leaky_relu(source_scores + target_scores)
 
         all_attn_coefs = self.softmax(all_scores + connectivity_mask)

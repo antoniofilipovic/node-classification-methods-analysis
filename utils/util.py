@@ -26,18 +26,13 @@ def convert_adj_dict_to_adj_matrix(adj_dict):
 
 def convert_adj_to_edge_index(adjacency_matrix):
     """
-    Handles both adjacency matrices as well as connectivity masks used in softmax (check out Imp2 of the GAT model)
-    Connectivity masks are equivalent to adjacency matrices they just have -inf instead of 0 and 0 instead of 1.
-    I'm assuming non-weighted (binary) adjacency matrices here obviously and this code isn't meant to be as generic
-    as possible but a learning resource.
-
+    Handles both adjacency matrices as well as connectivity masks used in softmax ( -inf instead of 0 and 0 instead of 1)
     """
     assert isinstance(adjacency_matrix, np.ndarray), f'Expected NumPy array got {type(adjacency_matrix)}.'
     height, width = adjacency_matrix.shape
     assert height == width, f'Expected square shape got = {adjacency_matrix.shape}.'
 
-    # If there are infs that means we have a connectivity mask and 0s are where the edges in connectivity mask are,
-    # otherwise we have an adjacency matrix and 1s symbolize the presence of edges.
+    # If there are infs that means we have a connectivity mask and 0s are where the edges are
     active_value = 0 if np.isinf(adjacency_matrix).any() else 1
 
     edge_index = []
@@ -152,11 +147,11 @@ def get_last_binary_name(binary_dir: str, dataset_name: str, model_name: str, ):
     prefix = f'{model_name}_{dataset_name}'
 
     def valid_binary_name(binary_name):
-        # First time you see raw f-string? Don't worry the only trick is to double the brackets.
+        # Raw f-string
         pattern = re.compile(rf'{prefix}_[0-9]{{6}}\.pth')
         return re.fullmatch(pattern, binary_name) is not None
 
-    # Just list the existing binaries so that we don't overwrite them but write to a new one
+    # Listing the existing binaries so that we don't overwrite them
     valid_binary_names = list(filter(valid_binary_name, os.listdir(binary_dir)))
     if len(valid_binary_names) > 0:
         return sorted(valid_binary_names)[-1]
@@ -178,7 +173,7 @@ def print_model_metadata(training_state):
     print(header)
 
     for key, value in training_state.items():
-        if key != 'state_dict':  # don't print state_dict it's a bunch of numbers...
+        if key != 'state_dict':  # avoid printing of state dict
             print(f'{key}: {value}')
     print(f'{"*" * len(header)}\n')
 

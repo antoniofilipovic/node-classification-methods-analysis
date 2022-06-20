@@ -69,8 +69,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
     def main_loop(phase, epoch=0):
         global BEST_VAL_PERF, BEST_VAL_LOSS, PATIENCE_CNT, writer
 
-        # Certain modules behave differently depending on whether we're training the model or not.
-        # e.g. nn.Dropout - we only want to drop model weights during the training.
+        # Certain modules behave differently depending on whether we're training the model
         if phase == LoopPhase.TRAIN:
             gcn.train()
         else:
@@ -80,14 +79,11 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
         gt_node_labels = get_node_labels(phase)  # gt stands for ground truth
 
         # Do a forwards pass and extract only the relevant node scores (train/val or test ones)
-        # Note: [0] just extracts the node_features part of the data (index 1 contains the edge_index)
         # shape = (N, C) where N is the number of nodes in the split (train/val/test) and C is the number of classes
-
         nodes_unnormalized_scores = gcn(graph_data)[0].index_select(node_dim, node_indices)
 
         # In Cora dataset we will have 7 output probabilities. cross_entropy loss first applies softmax to vector,
         # and then it calculates loss
-        # The probability of the correct class for most nodes approaches 1 we get to 0 loss!
         loss = cross_entropy_loss(nodes_unnormalized_scores, gt_node_labels)
 
         if phase == LoopPhase.TRAIN:
@@ -130,8 +126,7 @@ def get_main_loop(config, gcn, cross_entropy_loss, optimizer, node_features, nod
                 print(
                     f'GCN training: time elapsed= {(time.time() - time_start):.2f} [s] | epoch={epoch + 1} | val acc={accuracy}')
 
-            # The "patience" logic - should we break out from the training loop? If either validation acc keeps going up
-            # or the val loss keeps going down we won't stop
+            # The "patience" logic
             if accuracy > BEST_VAL_PERF or loss.item() < BEST_VAL_LOSS:
                 BEST_VAL_PERF = max(accuracy, BEST_VAL_PERF)  # keep track of the best validation accuracy so far
                 BEST_VAL_LOSS = min(loss.item(), BEST_VAL_LOSS)  # and the minimal loss
@@ -168,8 +163,7 @@ def train_gcn_cora(config):
             CORA_VAL_RANGE[0], CORA_VAL_RANGE[1],
             CORA_TEST_RANGE[0], CORA_TEST_RANGE[1])
 
-    # Indices that help us extract nodes that belong to the train/val and test splits, currently hardcoded
-    # question: what about training shuffle?
+    # Indices that help us extract nodes that belong to the train/val and test splits
     train_indices = torch.as_tensor(train_indices, device=device)
     val_indices = torch.as_tensor(val_indices, device=device)
     test_indices = torch.as_tensor(test_indices, device=device)
@@ -187,7 +181,7 @@ def train_gcn_cora(config):
     loss_fn = nn.CrossEntropyLoss(reduction='mean')
     optimizer = Adam(gcn.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
 
-    # The decorator function makes things cleaner since there is a lot of redundancy between the train and val loops
+    # The decorator function makes things cleaner
     main_loop = get_main_loop(
         config,
         gcn,
@@ -218,8 +212,6 @@ def train_gcn_cora(config):
                 break  # break out from the training loop
 
     # Step 5: Potentially test your model
-    # Don't overfit to the test dataset - only when you've fine-tuned your model on the validation dataset should you
-    # report your final loss and accuracy on the test dataset. Friends don't let friends overfit to the *train* data. <3
     if config['should_test']:
         test_acc = main_loop(phase=LoopPhase.TEST)
         config['test_perf'] = test_acc

@@ -60,14 +60,12 @@ def get_main_loop(config, gat, cross_entropy_loss, optimizer, node_features, nod
         gt_node_labels = get_node_labels(phase)  # gt stands for ground truth
 
         # Do a forwards pass and extract only the relevant node scores (train/val or test ones)
-        # Note: [0] just extracts the node_features part of the data (index 1 contains the edge_index)
+        # Note: [0] just extracts the node_features part of the data
         # shape = (N, C) where N is the number of nodes in the split (train/val/test) and C is the number of classes
-
         nodes_unnormalized_scores = gat(graph_data)[0].index_select(node_dim, node_indices)
 
         # In Cora dataset we will have 7 output probabilities. cross_entropy loss first applies softmax to vector,
         # and then it calculates loss
-        # The probability of the correct class for most nodes approaches 1 we get to 0 loss!
         loss = cross_entropy_loss(nodes_unnormalized_scores, gt_node_labels)
 
         if phase == LoopPhase.TRAIN:
@@ -110,8 +108,7 @@ def get_main_loop(config, gat, cross_entropy_loss, optimizer, node_features, nod
                 print(
                     f'GAT training: time elapsed= {(time.time() - time_start):.2f} [s] | epoch={epoch + 1} | val acc={accuracy}')
 
-            # The "patience" logic - should we break out from the training loop? If either validation acc keeps going up
-            # or the val loss keeps going down we won't stop
+            # The "patience" logic
             if accuracy > BEST_VAL_PERF or loss.item() < BEST_VAL_LOSS:
                 BEST_VAL_PERF = max(accuracy, BEST_VAL_PERF)  # keep track of the best validation accuracy so far
                 BEST_VAL_LOSS = min(loss.item(), BEST_VAL_LOSS)  # and the minimal loss
@@ -123,7 +120,7 @@ def get_main_loop(config, gat, cross_entropy_loss, optimizer, node_features, nod
                 raise Exception('Stopping the training.')
 
         else:
-            return accuracy  # in the case of test phase we just report back the test accuracy
+            return accuracy  # in the case of test phase report back the test accuracy
 
     return main_loop  # return the decorated function
 
@@ -147,8 +144,7 @@ def train_gat_cora(config):
         train_indices, val_indices, test_indices = util.get_unbalanced_train_indices(
             *datasets_util.get_train_test_val_ranges(dataset_name = config["dataset_name"]))
 
-    # Indices that help us extract nodes that belong to the train/val and test splits, currently hardcoded
-    # question: what about training shuffle?
+    # Indices to extract nodes that belong to the train/val and test splits,
     train_indices = torch.as_tensor(train_indices, device=device)
     val_indices = torch.as_tensor(val_indices, device=device)
     test_indices = torch.as_tensor(test_indices, device=device)
@@ -167,7 +163,7 @@ def train_gat_cora(config):
     loss_fn = nn.CrossEntropyLoss(reduction='mean')
     optimizer = Adam(gat.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
 
-    # The decorator function makes things cleaner since there is a lot of redundancy between the train and val loops
+    # The decorator function makes things cleaner
     main_loop = get_main_loop(
         config,
         gat,
@@ -198,8 +194,6 @@ def train_gat_cora(config):
                 break  # break out from the training loop
 
     # Step 5: Potentially test your model
-    # Don't overfit to the test dataset - only when you've fine-tuned your model on the validation dataset should you
-    # report your final loss and accuracy on the test dataset. Friends don't let friends overfit to the *train* data. <3
     if config['should_test']:
         test_acc = main_loop(phase=LoopPhase.TEST)
         config['test_perf'] = test_acc
@@ -225,8 +219,8 @@ def get_args():
     parser.add_argument("--num_of_epochs", type=int, help="number of training epochs", default=1000)
     parser.add_argument("--patience_period", type=int,
                         help="number of epochs with no improvement on val before terminating", default=1000)
-    parser.add_argument("--lr", type=float, help="model learning rate", default=5e-3)
-    parser.add_argument("--weight_decay", type=float, help="L2 regularization on model weights", default=5e-4)
+    parser.add_argument("--lr", type=float, help="model learning rate", default=5e-4)
+    parser.add_argument("--weight_decay", type=float, help="L2 regularization on model weights", default=1e-5)
     parser.add_argument("--should_test", action='store_true', default=True,
                         help='should test the model on the test dataset? (no by default)')
     parser.add_argument("--balanced", action='store_true', default=True,
@@ -258,7 +252,7 @@ def get_args():
         "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
         "add_skip_connection": False,  # hurts perf on Cora
         "bias": True,  # result is not so sensitive to bias
-        "dropout": 0.6,  # result is sensitive to dropout,
+        "dropout": 0.5,  # result is sensitive to dropout,
         "layer_type": GATLayerType.IMP1,
         "model_type": ModelType.GAT,
         "num_features_per_layer": [datasets_util.get_num_input_features(training_config["dataset_name"]), 64,

@@ -64,14 +64,12 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
         gt_node_labels = get_node_labels(phase)  # gt stands for ground truth
 
         # Do a forwards pass and extract only the relevant node scores (train/val or test ones)
-        # Note: [0] just extracts the node_features part of the data (index 1 contains the edge_index)
         # shape = (N, C) where N is the number of nodes in the split (train/val/test) and C is the number of classes
 
         nodes_unnormalized_scores = graph_sage(graph_data)[0].index_select(0, node_indices)
 
         # In Cora dataset we will have 7 output probabilities. cross_entropy loss first applies softmax to vector,
         # and then it calculates loss
-        # The probability of the correct class for most nodes approaches 1 we get to 0 loss!
         loss = cross_entropy_loss(nodes_unnormalized_scores, gt_node_labels)
 
         if phase == LoopPhase.TRAIN:
@@ -116,8 +114,7 @@ def get_main_loop(config, graph_sage, cross_entropy_loss, optimizer, node_featur
                 print(
                     f'Graph SAGE training: time elapsed= {(time.time() - time_start):.2f} [s] | epoch={epoch + 1} | val acc={accuracy}')
 
-            # The "patience" logic - should we break out from the training loop? If either validation acc keeps going up
-            # or the val loss keeps going down we won't stop
+            # The "patience" logic
             if accuracy > BEST_VAL_PERF or loss.item() < BEST_VAL_LOSS:
                 BEST_VAL_PERF = max(accuracy, BEST_VAL_PERF)  # keep track of the best validation accuracy so far
                 BEST_VAL_LOSS = min(loss.item(), BEST_VAL_LOSS)  # and the minimal loss
@@ -173,7 +170,7 @@ def train_graph_sage_cora(config):
     loss_fn = nn.CrossEntropyLoss(reduction='mean')
     optimizer = Adam(graph_sage.parameters(), lr=config['lr'], weight_decay=config['weight_decay'])
 
-    # The decorator function makes things cleaner since there is a lot of redundancy between the train and val loops
+    # The decorator function makes things cleaner since
     main_loop = get_main_loop(
         config,
         graph_sage,
@@ -204,8 +201,6 @@ def train_graph_sage_cora(config):
                 break  # break out from the training loop
 
     # Step 5: Potentially test your model
-    # Don't overfit to the test dataset - only when you've fine-tuned your model on the validation dataset should you
-    # report your final loss and accuracy on the test dataset. Friends don't let friends overfit to the *train* data. <3
     if config['should_test']:
         test_acc = main_loop(phase=LoopPhase.TEST)
         config['test_perf'] = test_acc
@@ -229,7 +224,7 @@ def get_args():
     parser.add_argument("--no_train", action='store_true', default=False, required=False)
 
     # Training related
-    parser.add_argument("--num_of_epochs", type=int, help="number of training epochs", default=5)
+    parser.add_argument("--num_of_epochs", type=int, help="number of training epochs", default=50)
     parser.add_argument("--patience_period", type=int,
                         help="number of epochs with no improvement on val before terminating", default=100)
     parser.add_argument("--lr", type=float, help="model learning rate", default=5e-3)
@@ -261,13 +256,13 @@ def get_args():
     # Model architecture related
     graph_sage_config = {
         "num_of_layers": 2,  # GNNs, contrary to CNNs, are often shallow (it ultimately depends on the graph properties)
-        "dropout": 0.7,  # result is sensitive to dropout,
+        "dropout": 0.5,  # result is sensitive to dropout,
         "layer_type": GraphSAGELayerType.IMP1,
         "model_type": ModelType.GraphSAGE,
         "num_neighbors": 50,
         "num_features_per_layer": [datasets_util.get_num_input_features(training_config["dataset_name"]), 128,
                                    datasets_util.get_num_classes(training_config["dataset_name"])],
-        "aggregator_type":GraphSAGEAggregatorType.MaxPool,
+        "aggregator_type":GraphSAGEAggregatorType.Mean,
     }
 
     # Add additional config information
